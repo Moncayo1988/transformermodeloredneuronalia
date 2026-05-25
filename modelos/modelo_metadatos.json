@@ -1,7 +1,7 @@
 {
   "proyecto": "Detección de Placas Vehiculares - Popayán",
   "modelo": "TransformerPlacas (PyTorch)",
-  "precision_test": 98.16,
+  "precision_test": 98.05,
   "arquitectura": {
     "d_model": 64,
     "num_heads": 4,
