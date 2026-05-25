@@ -13,6 +13,9 @@ from modulo2_ocr     import extraer_datos_placa
 from modulo3_dataset import preparar_datos_transformer
 from modulo4_transformer import ejecutar_modulo4, predecir_pico_placa
 
+# Módulo 5 — Cámara en tiempo real
+from modulo5_camara import iniciar_camara
+
 
 # ==============================================================================
 # 1. PIPELINE LOCAL - SELECCIÓN DE IMAGEN
@@ -161,9 +164,6 @@ def ejecutar_pipeline_completo(
     historico_df = pipeline_imagen_local()
     exportar_csv(historico_df)
 
-    # FASE 2, 3 y 4 (Dataset + Transformer + Predicciones)
-    # ... (mantienes el resto igual que tenías)
-
     print("\nPipeline finalizado correctamente.")
 
 
@@ -172,9 +172,42 @@ def ejecutar_pipeline_completo(
 # ==============================================================================
 
 if __name__ == "__main__":
-    ejecutar_pipeline_completo(
-        usar_kaggle=False,
-        n_sintetico=48000,
-        epochs=30,
-        ruta_modelo="transformer_pico_placa.pt"
-    )
+    # Menú de selección de modo
+    print("\n" + "="*60)
+    print("   DETECCIÓN DE PLACAS VEHICULARES — POPAYÁN")
+    print("="*60)
+    print("  [1] Pipeline de imágenes (seleccionar archivos)")
+    print("  [2] Cámara en tiempo real (Módulo 5)")
+    print("="*60)
+
+    while True:
+        opcion = input("\nElige una opción (1 o 2): ").strip()
+        if opcion in ['1', '2']:
+            break
+        print("   Por favor elige 1 o 2.")
+
+    if opcion == '1':
+        # Pipeline original — sin cambios
+        ejecutar_pipeline_completo(
+            usar_kaggle=False,
+            n_sintetico=48000,
+            epochs=30,
+            ruta_modelo="transformer_pico_placa.pt"
+        )
+
+    elif opcion == '2':
+        # Módulo 5 — Cámara en tiempo real
+        print("\n  Índice de cámara:")
+        print("    0 = cámara por defecto")
+        print("    1 = cámara externa")
+        cam = input("  Elige índice (Enter para 0): ").strip()
+        cam = int(cam) if cam.isdigit() else 0
+
+        tf = input("  ¿Usar Transformer? (s/n, Enter=s): ").strip().lower()
+        usar_tf = tf not in ['n', 'no']
+
+        iniciar_camara(
+            cam_idx          = cam,
+            usar_transformer = usar_tf,
+            gpu              = False
+        )
