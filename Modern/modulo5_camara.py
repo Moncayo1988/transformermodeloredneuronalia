@@ -333,11 +333,7 @@ def iniciar_camara(cam_idx: int = 0,
     # ── CONFIGURACIÓN AUTOMÁTICA DE DROIDCAM ──────────────────────────────
     print(f"\n[CAM] Iniciando conexión con DroidCam...")
     
-    # 1. Agrega esta línea que te faltaba (coloca la IP base de tu casa):
-    ip_por_defecto = "192.168.80.21" 
-    
-    print(f"  Presiona ENTER para usar la IP por defecto ({ip_por_defecto})")
-    ip_usuario = input("  O escribe los últimos números de la nueva IP: ").strip()
+    ip_usuario = input("Escribe los últimos números de la nueva IP: ").strip()
     
     if ip_usuario:
         if "." in ip_usuario:
@@ -350,7 +346,7 @@ def iniciar_camara(cam_idx: int = 0,
     direccion_droidcam = f"http://{ip_final}:4747/video"
     print(f"[CAM] Conectando a: {direccion_droidcam}\n")
     
-    # 2. Se quita el CAP_DSHOW para que no falle la URL de red:
+    # Se quita el CAP_DSHOW para que no falle la URL de red:
     cap = cv2.VideoCapture(direccion_droidcam)
     
     # Esto le da un momento al buffer para estabilizar la señal de red
