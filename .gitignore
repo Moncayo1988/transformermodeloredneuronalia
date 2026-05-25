@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Entornos Virtuales
+venv/
+env/
+ENV/
+.venv
+
+# Archivos de configuración y secretos
+*.env
+.env
+.secrets
+config.ini
+
+# Archivos generados y datos (basado en tu imagen)
+*.csv
+*.pth
+*.pth.tar
+*.pt
+*.onnx
+*.h5
+resultados_*.csv
+*.log
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistemas operativos

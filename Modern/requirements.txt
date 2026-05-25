@@ -1,0 +1,15 @@
+ultralytics
+huggingface_hub
+easyocr
+pytesseract
+pandas
+tensorflow
+pillow-avif-plugin
+opencv-python
+numpy
+matplotlib
+torch
+torchvision
+scikit-learn
+seaborn
+pillow
