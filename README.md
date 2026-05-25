@@ -98,14 +98,15 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 # Sin GPU (solo CPU)
 pip install torch torchvision
 
-# 4. Instalar las demás dependencias
-pip install opencv-python ultralytics huggingface_hub
+# 4. Instalar librerías de IA (Instalarán dependencias ocultas)
+pip install ultralytics huggingface_hub easyocr
 
-# 5. Instalar EasyOCR
-pip install easyocr
-
-# 6. Instalar el resto de dependencias
+# 5. Instalar el resto de dependencias desde el archivo
 pip install -r Modern/requirements.txt
+
+# 6. FORZAR OpenCV Completo (Soluciona errores de interfaz de cámara en Windows)
+pip uninstall opencv-python-headless opencv-python -y
+pip install opencv-python
 ```
 
 ### Verificar instalación
