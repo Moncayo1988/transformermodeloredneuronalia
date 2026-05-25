@@ -28,6 +28,7 @@ venv/
 env/
 ENV/
 .venv
+venv_placas/
 
 # Archivos de configuración y secretos
 *.env
