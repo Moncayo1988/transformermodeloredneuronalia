@@ -330,27 +330,22 @@ def iniciar_camara(cam_idx: int = 0,
     transformer = _cargar_transformer(usar_transformer, device)
     lector_easy = obtener_lector_easyocr()
 
-    # ── CONFIGURACIÓN AUTOMÁTICA DE DROIDCAM ──────────────────────────────
+    # ── CONFIGURACIÓN MANUAL DE DROIDCAM (COMPARTIBLE) ────────────────────
     print(f"\n[CAM] Iniciando conexión con DroidCam...")
     
-    ip_usuario = input("Escribe los últimos números de la nueva IP: ").strip()
+    ip_usuario = input("Escribe la IP de DroidCam (ej. 192.168.80.21 o solo el final 21): ").strip()
     
-    if ip_usuario:
-        if "." in ip_usuario:
-            ip_final = ip_usuario
-        else:
-            ip_final = f"192.168.80.{ip_usuario}"
+    # Si el usuario escribe solo el número final, se auto-completa el rango de tu red
+    if ip_usuario and not "." in ip_usuario:
+        ip_final = f"192.168.80.{ip_usuario}"
     else:
-        ip_final = ip_por_defecto
+        ip_final = ip_usuario
 
     direccion_droidcam = f"http://{ip_final}:4747/video"
     print(f"[CAM] Conectando a: {direccion_droidcam}\n")
     
-    # Se quita el CAP_DSHOW para que no falle la URL de red:
     cap = cv2.VideoCapture(direccion_droidcam)
-    
-    # Esto le da un momento al buffer para estabilizar la señal de red
-    time.sleep(1.0) 
+    time.sleep(1.0)
     # ───────────────────────────────────────────────────────────────────────
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,   640)
