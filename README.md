@@ -87,19 +87,24 @@ cd transformermodeloredneuronalia
 python -m venv venv_placas
 
 # Windows — habilitar scripts y activar
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-.\venv_placas\Scripts\Activate.ps1
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned ; .\venv_placas\Scripts\Activate.ps1
 
 # Linux / Mac
 source venv_placas/bin/activate
 
 # 3. Instalar PyTorch con soporte CUDA (GPU NVIDIA)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121 --no-cache-dir
 
 # Sin GPU (solo CPU)
 pip install torch torchvision
 
-# 4. Instalar el resto de dependencias
+# 4. Instalar las demás dependencias
+pip install opencv-python ultralytics huggingface_hub
+
+# 5. Instalar EasyOCR
+pip install easyocr
+
+# 6. Instalar el resto de dependencias
 pip install -r Modern/requirements.txt
 ```
 
@@ -234,7 +239,7 @@ Imagen / Frame de cámara
         ▼
 ┌───────────────────────────────────┐
 │  MÓDULO 1 — Detección YOLO11      │
-│  Cascada: conf=0.35 → 0.25 → 0.15│
+│  Cascada: conf=0.35 → 0.25 → 0.15 │
 │  Fallback: segmentación HSV       │
 │  Super-resolución ×4 (Lanczos4)   │
 └───────────────┬───────────────────┘
