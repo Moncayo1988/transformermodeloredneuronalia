@@ -292,7 +292,7 @@ def _dibujar_hud(frame: np.ndarray, n_det: int,
 
     # Leyenda de colores por día
     x0 = 8
-    for dia in DIAS_UNICOS:
+    for dia in ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']:
         color = COLORES_DIA.get(dia, (200, 200, 200))
         cv2.rectangle(frame, (x0, 66), (x0 + 12, 76), color, -1)
         cv2.putText(frame, dia[:3], (x0 + 14, 76),
@@ -330,14 +330,27 @@ def iniciar_camara(cam_idx: int = 0,
     transformer = _cargar_transformer(usar_transformer, device)
     lector_easy = obtener_lector_easyocr()
 
-    # Abrir cámara
-    print(f"[CAM] Abriendo camara indice {cam_idx}...")
-    cap = cv2.VideoCapture(cam_idx)
+    # ── CONFIGURACIÓN AUTOMÁTICA DE DROIDCAM ──────────────────────────────
+    print(f"\n[CAM] Iniciando conexión con DroidCam...")
 
-    if not cap.isOpened():
-        print(f"[ERROR] No se pudo abrir la camara (indice {cam_idx}).")
-        print("        Prueba con --cam 0, --cam 1 o --cam 2.")
-        return
+    ip_usuario = input("Escribe los últimos números de la nueva IP: ").strip()
+    
+    if ip_usuario:
+        if "." in ip_usuario:
+            ip_final = ip_usuario
+        else:
+            ip_final = f"192.168.1.{ip_usuario}"
+    else:
+        ip_final = ip_por_defecto
+
+    direccion_droidcam = f"http://{ip_final}:4747/video"
+    print(f"[CAM] Conectando a: {direccion_droidcam}\n")
+    
+    cap = cv2.VideoCapture(direccion_droidcam, cv2.CAP_DSHOW)
+
+    # Esto le da un momento al buffer para estabilizar la señal de red
+    time.sleep(1.0) 
+    # ───────────────────────────────────────────────────────────────────────
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,   640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT,  480)
