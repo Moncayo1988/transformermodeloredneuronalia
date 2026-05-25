@@ -297,6 +297,24 @@ def preparar_datos_transformer(
     print(f"  TOTAL      : {len(datos_raw)}")
     print(f"\n[OK] datos_raw listo para Módulo 4.")
 
+    # ── Resumen teórico visible en la sustentación ────────────────────────────
+    print("\n" + "─"*60)
+    print("FUNDAMENTO TEÓRICO — MÓDULO 3")
+    print("─"*60)
+    print(f"  Vocabulario    : {VOCAB_SIZE} tokens (<PAD> + A-Z + 0-9)")
+    print(f"  MAX_LEN        : {MAX_LEN} posiciones (longitud máx. de placa)")
+    print( "  Padding token  : 0 → <PAD> (relleno posterior)")
+    print( "\n  Ejemplo de tokenización:")
+    ejemplo = 'HSY095'
+    toks    = tokenizar_placa(ejemplo).tolist()
+    print(f"    '{ejemplo}' → {toks}")
+    print( "\n  Positional Encoding:")
+    print( "    Inyecta la posición (0-6) en cada embedding.")
+    print( "    Crucial para que el Transformer entienda que")
+    print( "    pos 0-2 = letras  |  pos 3-5 = dígitos")
+    print(f"    'HSY095' ≠ '095HSY'  (mismo contenido, día distinto)")
+    print("─"*60)
+
     return datos_raw
 
 

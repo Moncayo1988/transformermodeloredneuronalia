@@ -197,11 +197,21 @@ if __name__ == "__main__":
 
     elif opcion == '2':
         # Módulo 5 — Cámara en tiempo real
-        print("\n  Índice de cámara:")
-        print("    0 = cámara por defecto")
-        print("    1 = cámara externa")
-        cam = input("  Elige índice (Enter para 0): ").strip()
-        cam = int(cam) if cam.isdigit() else 0
+        print("\n  Fuente de video:")
+        print("    0 = cámara integrada del portátil")
+        print("    1 = celular (IP Webcam)")
+
+        while True:
+            cam_opcion = input("  Elige (0 o 1): ").strip()
+            if cam_opcion in ['0', '1']:
+                break
+            print("  Por favor elige el 0 o el 1.")
+
+        if cam_opcion == '1':
+            ip = input("  IP del celular (ej: 192.168.80.21:8080): ").strip()
+            cam = f"http://{ip}/video"
+        else:
+            cam = 0
 
         tf = input("  ¿Usar Transformer? (s/n, Enter=s): ").strip().lower()
         usar_tf = tf not in ['n', 'no']

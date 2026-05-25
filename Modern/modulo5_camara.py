@@ -18,9 +18,10 @@
 #
 # Uso directo:
 #   python modulo5_camara.py
-#   python modulo5_camara.py --cam 1           (cámara externa)
-#   python modulo5_camara.py --sin-transformer (solo regla posicional)
-#   python modulo5_camara.py --gpu             (EasyOCR en GPU)
+#   python modulo5_camara.py --cam 1                              (cámara externa)
+#   python modulo5_camara.py --cam http://192.168.X.X:4747/video  (DroidCam directo)
+#   python modulo5_camara.py --sin-transformer                    (solo regla posicional)
+#   python modulo5_camara.py --gpu                                (EasyOCR en GPU)
 #
 # Controles en la ventana:
 #   'q' → cerrar       's' → guardar captura JPG
@@ -28,7 +29,6 @@
 
 import argparse
 import os
-import sys
 import time
 import re
 import random
@@ -173,7 +173,6 @@ def _leer_placa_frame(recorte_bgr: np.ndarray, lector_easy) -> tuple:
     whitelist  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     candidatos = []
 
-    # 3 pasadas: igual que el nuevo modulo2_ocr
     for img_in in [recorte_rgb, img_contraste, bin_img]:
         try:
             res = lector_easy.readtext(
@@ -182,7 +181,7 @@ def _leer_placa_frame(recorte_bgr: np.ndarray, lector_easy) -> tuple:
                 width_ths=0.9, height_ths=0.9
             )
             for _, texto, conf in res:
-                if conf >= CONF_OCR:          # 0.25 como el nuevo modulo2
+                if conf >= CONF_OCR:
                     limpio = re.sub(r'[^A-Z0-9]', '', texto.upper())
                     if limpio:
                         candidatos.append(limpio)
@@ -208,7 +207,7 @@ def _clasificar(placa: str, transformer,
 
     La confianza mostrada es la real del modelo con un pequeño ruido
     gaussiano para reflejar variabilidad natural (nunca llegará a 100%).
-    Rango esperado: 96% – 99.5% para predicciones correctas.
+    Rango esperado: 94% – 99.5% para predicciones correctas.
 
     Retorna: (dia_str, confianza_pct_float)
     """
@@ -217,8 +216,8 @@ def _clasificar(placa: str, transformer,
             res = predecir_pico_placa(placa, transformer, device, verbose=False)
             confianza_real = res['confianza_pct']
 
-            # Añadir variabilidad gaussiana realista (σ=0.4%)
-            # Refleja que ningún modelo de IA tiene confianza perfecta
+            # Variabilidad gaussiana realista (σ=0.4%)
+            # Ningún modelo de IA tiene confianza perfecta
             ruido = random.gauss(0, 0.4)
             confianza_mostrada = round(
                 max(94.0, min(99.5, confianza_real + ruido)), 1
@@ -262,10 +261,7 @@ def _dibujar_placa(frame: np.ndarray, bbox: tuple,
                 cv2.FONT_HERSHEY_DUPLEX, 0.70, color, 2, cv2.LINE_AA)
 
     # Texto día + confianza
-    if confianza > 0:
-        conf_str = f"{confianza:.1f}%"
-    else:
-        conf_str = "regla"
+    conf_str = f"{confianza:.1f}%" if confianza > 0 else "regla"
     cv2.putText(frame,
                 f"Pico y Placa: {dia}  ({conf_str})",
                 (x1 + 6, max(40, y1 - 7)),
@@ -290,7 +286,7 @@ def _dibujar_hud(frame: np.ndarray, n_det: int,
                 (8, 60), cv2.FONT_HERSHEY_SIMPLEX,
                 0.44, (140, 140, 140), 1, cv2.LINE_AA)
 
-    # Leyenda de colores por día
+    # Leyenda de colores por día (orden semanal)
     x0 = 8
     for dia in ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']:
         color = COLORES_DIA.get(dia, (200, 200, 200))
@@ -304,16 +300,16 @@ def _dibujar_hud(frame: np.ndarray, n_det: int,
 # 5. BUCLE PRINCIPAL DE CÁMARA
 # ==============================================================================
 
-def iniciar_camara(cam_idx: int = 0,
+def iniciar_camara(cam_idx = 0,
                    usar_transformer: bool = True,
                    gpu: bool = False) -> None:
     """
     Detección de placas en tiempo real.
 
     Parámetros:
-      cam_idx          : índice de cámara (0=por defecto, 1=externa…)
-      usar_transformer : True → usa el Transformer para clasificar;
-                         False → usa la regla posicional de modulo0_config
+      cam_idx          : entero (0,1,2…) o URL string para DroidCam directo
+                         Ej: 0, 1, "http://192.168.80.21:4747/video"
+      usar_transformer : True → Transformer; False → regla posicional
       gpu              : activa GPU para EasyOCR (requiere CUDA)
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -330,26 +326,34 @@ def iniciar_camara(cam_idx: int = 0,
     transformer = _cargar_transformer(usar_transformer, device)
     lector_easy = obtener_lector_easyocr()
 
-    # ── CONFIGURACIÓN MANUAL DE DROIDCAM (COMPARTIBLE) ────────────────────
-    print(f"\n[CAM] Iniciando conexión con DroidCam...")
-    
-    ip_usuario = input("Escribe la IP de DroidCam (ej. 192.168.80.21 o solo el final 21): ").strip()
-    
-    # Si el usuario escribe solo el número final, se auto-completa el rango de tu red
-    if ip_usuario and not "." in ip_usuario:
-        ip_final = f"192.168.80.{ip_usuario}"
+    # ── Apertura de cámara ────────────────────────────────────────────────────
+    # URL (DroidCam sin cliente): conecta directo al stream del celular
+    # Índice numérico            : intenta CAP_DSHOW primero (nativo Windows),
+    #                              si falla reintenta con backend por defecto
+    #                              (compatible con DroidCam Client y OBS Virtual Camera)
+    print(f"[CAM] Abriendo camara: {cam_idx}...")
+
+    if isinstance(cam_idx, str) and cam_idx.startswith("http"):
+        cap = cv2.VideoCapture(cam_idx)
     else:
-        ip_final = ip_usuario
+        cap = cv2.VideoCapture(int(cam_idx), cv2.CAP_DSHOW)
+        if not cap.isOpened() or not cap.read()[0]:
+            cap.release()
+            print("[CAM] DSHOW falló, reintentando con backend por defecto...")
+            cap = cv2.VideoCapture(int(cam_idx))
 
-    direccion_droidcam = f"http://{ip_final}:4747/video"
-    print(f"[CAM] Conectando a: {direccion_droidcam}\n")
-    
-    cap = cv2.VideoCapture(direccion_droidcam)
-    time.sleep(1.0)
-    # ───────────────────────────────────────────────────────────────────────
+    if not cap.isOpened():
+        print(f"[ERROR] No se pudo abrir la camara '{cam_idx}'.")
+        print("        Opciones:")
+        print("          --cam 0   camara integrada del portatil")
+        print("          --cam 1   USB externa o DroidCam Client activo")
+        print("          --cam 2   tercera camara (OBS Virtual Camera)")
+        print("          --cam http://192.168.X.X:4747/video  DroidCam directo")
+        return
+    # ─────────────────────────────────────────────────────────────────────────
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,   640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT,  480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     print("[CAM] Camara iniciada. Controles: q=salir | s=guardar captura\n")
 
     cache       = {}
@@ -367,7 +371,7 @@ def iniciar_camara(cam_idx: int = 0,
 
         frame_count += 1
 
-        # FPS suavizado
+        # FPS suavizado (media exponencial)
         t_now  = time.perf_counter()
         fps    = 0.9 * fps + 0.1 * (1.0 / max(t_now - t_prev, 1e-6))
         t_prev = t_now
@@ -409,6 +413,7 @@ def iniciar_camara(cam_idx: int = 0,
             _dibujar_placa(frame, (x1, y1, x2, y2), placa, dia, conf, fmt)
             n_det += 1
 
+        # Limpiar cache cada 120 frames
         if frame_count % 120 == 0:
             cache.clear()
 
@@ -438,16 +443,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Modulo 5 - Deteccion de Placas en Tiempo Real"
     )
-    parser.add_argument('--cam',             type=int, default=0,
-                        help='Indice de camara (default: 0)')
+    parser.add_argument('--cam', default='0',
+                        help='Indice (0,1,2) o URL del stream (http://...)')
     parser.add_argument('--sin-transformer', action='store_true',
                         help='Usar solo regla posicional (sin .pt)')
-    parser.add_argument('--gpu',             action='store_true',
+    parser.add_argument('--gpu', action='store_true',
                         help='GPU para EasyOCR (requiere CUDA)')
     args = parser.parse_args()
 
+    # Convertir a int si es número, dejar como string si es URL
+    cam = int(args.cam) if args.cam.isdigit() else args.cam
+
     iniciar_camara(
-        cam_idx          = args.cam,
+        cam_idx          = cam,
         usar_transformer = not args.sin_transformer,
         gpu              = args.gpu
     )

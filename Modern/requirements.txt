@@ -1,15 +1,27 @@
-ultralytics
-huggingface_hub
-easyocr
-pytesseract
-pandas
-tensorflow
+# Detección de Placas Vehiculares — Popayán
+# Instalar con: pip install -r requirements.txt
+
+# ── Visión computacional y detección ──────────────────────────────────────────
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+huggingface_hub>=0.20.0
+pillow>=9.0.0
 pillow-avif-plugin
-opencv-python
-numpy
-matplotlib
-torch
-torchvision
-scikit-learn
-seaborn
-pillow
+
+# ── OCR ───────────────────────────────────────────────────────────────────────
+easyocr>=1.7.0
+pytesseract
+
+# ── Deep Learning ─────────────────────────────────────────────────────────────
+# PyTorch: instalar por separado según hardware:
+#   GPU NVIDIA: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#   Solo CPU  : pip install torch torchvision
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── Datos y visualización ─────────────────────────────────────────────────────
+numpy>=1.24.0
+pandas>=1.5.0
+matplotlib>=3.5.0
+seaborn>=0.12.0
+scikit-learn>=1.0.0

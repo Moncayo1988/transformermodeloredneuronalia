@@ -50,7 +50,7 @@ transformermodeloredneuronalia/
 | 1 | `modulo1_deteccion_yolo.py` | Michael Giraldo | Detección en cascada con YOLO11 + fallback HSV |
 | 2 | `modulo2_ocr.py` | DanBar | Preprocesamiento adaptativo por color + OCR dual EasyOCR/Tesseract |
 | 3 | `modulo3_dataset.py` | Andrés Garcés | Dataset sintético con variabilidad y ambigüedad OCR real |
-| 4 | `modulo4_transformer.py` | Sebastián Moncayó | Transformer encoder desde cero, entrenamiento y predicción |
+| 4 | `modulo4_transformer.py` | Integrante 4 | Transformer encoder desde cero, entrenamiento y predicción |
 | 5 | `modulo5_camara.py` | Andrés Garcés | Detección en tiempo real por cámara web |
 
 ---
@@ -87,26 +87,20 @@ cd transformermodeloredneuronalia
 python -m venv venv_placas
 
 # Windows — habilitar scripts y activar
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned ; .\venv_placas\Scripts\Activate.ps1
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+.\venv_placas\Scripts\Activate.ps1
 
 # Linux / Mac
 source venv_placas/bin/activate
 
 # 3. Instalar PyTorch con soporte CUDA (GPU NVIDIA)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121 --no-cache-dir
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 # Sin GPU (solo CPU)
 pip install torch torchvision
 
-# 4. Instalar librerías de IA (Instalarán dependencias ocultas)
-pip install ultralytics huggingface_hub easyocr
-
-# 5. Instalar el resto de dependencias desde el archivo
+# 4. Instalar el resto de dependencias
 pip install -r Modern/requirements.txt
-
-# 6. FORZAR OpenCV Completo (Soluciona errores de interfaz de cámara en Windows)
-pip uninstall opencv-python-headless opencv-python -y
-pip install opencv-python
 ```
 
 ### Verificar instalación
@@ -234,108 +228,84 @@ La confianza que aparece en el overlay refleja la salida real del modelo con var
 
 ## Flujo de procesamiento completo
 
-El pipeline síncrono del sistema procesa la información de forma secuencial y en cascada a través de las siguientes etapas computacionales:
-
-```text
-       Imagen / Fotograma de Entrada
-                    │
-                    ▼
-┌───────────────────────────────────────────────┐
-│       MÓDULO 1 — DETECCIÓN DE OBJETO          │
-│ • Localización de placa mediante YOLO11       │
-│ • Cascada de confianza: 0.35 → 0.25 → 0.15    │
-│ • Lógica de Fallback: Segmentación HSV        │
-│ • Super-resolución por Interpolación Lanczos4 │
-└───────────────────────┬───────────────────────┘
-                        │ Recorte RGB optimizado
-                        ▼
-┌───────────────────────────────────────────────┐
-│        MÓDULO 2 — OCR ADAPTATIVO              │
-│ • Clasificación del tipo de placa por color   │
-│ • Binarización Otsu y adaptativa dinámica     │
-│ • Extracción dual: EasyOCR + Tesseract        │
-│ • Modos de segmentación Tesseract (PSM 7,8,13)│
-│ • Filtro sintáctico posicional colombiano     │
-└───────────────────────┬───────────────────────┘
-                        │ Placa en texto (Ej: "ABC123")
-                        ▼
-┌───────────────────────────────────────────────┐
-│         MÓDULO 3 — TOKENIZACIÓN               │
-│ • Mapeo de caracteres string a tensores index │
-│ • Vectorización con padding rígido MAX_LEN=7   │
-│   Vector de entrada: [7, 18, 24, 27, 22, 32, 0]│
-└───────────────────────┬───────────────────────┘
-                        │ Secuencia de tokens embebidos
-                        ▼
-┌───────────────────────────────────────────────┐
-│        MÓDULO 4 — RED NEURONAL DE IA          │
-│ • Input Embedding + Encoding Posicional       │
-│ • Arquitectura: 2× Bloques Encoder (MHA + FFN)│
-│ • Agregación espacial mediante MeanPooling    │
-│ • Capa lineal de salida (Clasificador FC)     │
-│ • Precisión del clasificador en Test: 98.22%  │
-└───────────────────────┬───────────────────────┘
-                        │ Atributo categórico predicho
-                        ▼
-            Pico y Placa: Martes
+```
+Imagen / Frame de cámara
+        │
+        ▼
+┌───────────────────────────────────┐
+│  MÓDULO 1 — Detección YOLO11      │
+│  Cascada: conf=0.35 → 0.25 → 0.15│
+│  Fallback: segmentación HSV       │
+│  Super-resolución ×4 (Lanczos4)   │
+└───────────────┬───────────────────┘
+                │ recorte RGB de la placa
+                ▼
+┌───────────────────────────────────┐
+│  MÓDULO 2 — OCR adaptativo        │
+│  Detección de tipo por color      │
+│  Binarización Otsu / adaptativa   │
+│  EasyOCR + Tesseract (PSM 7,8,13) │
+│  Corrección posicional colombiana │
+└───────────────┬───────────────────┘
+                │ placa: "ABC123"
+                ▼
+┌───────────────────────────────────┐
+│  MÓDULO 3 — Tokenización          │
+│  char → índice, padding MAX_LEN=7 │
+│  [7, 18, 24, 27, 22, 32, 0]       │
+└───────────────┬───────────────────┘
+                │ secuencia de tokens
+                ▼
+┌───────────────────────────────────┐
+│  MÓDULO 4 — Transformer           │
+│  Embedding → PositionalEncoding   │
+│  2× EncoderBlock (MHA + FFN)      │
+│  MeanPooling → Clasificador FC    │
+│  Precisión: 98.22%                │
+└───────────────┬───────────────────┘
+                │ día de restricción
+                ▼
+        Pico y Placa: Martes
 ```
 
 ---
 
 ## Pico y Placa Popayán
 
-Lógica de restricciones vehiculares parametrizada en el sistema de acuerdo con la normativa vigente para la ciudad de Popayán:
-
-
-| Último dígito de la placa | Día restringido | Identificador en Overlay |
-|:-------------------------:|-----------------|--------------------------|
-| **0, 1** | Lunes | 🟡 Amarillo |
-| **2, 3** | Martes | 🔵 Azul |
-| **4, 5** | Miércoles | 🟢 Verde |
-| **6, 7** | Jueves | 🟠 Naranja |
-| **8, 9** | Viernes | 🔴 Rojo |
+| Último dígito de la placa | Día restringido |
+|:-------------------------:|-----------------|
+| 0, 1 | Lunes |
+| 2, 3 | Martes |
+| 4, 5 | Miércoles |
+| 6, 7 | Jueves |
+| 8, 9 | Viernes |
 
 ---
 
-## Dataset y Robustez ante Ruido
+## Dataset
 
-El conjunto de datos utilizado para el entrenamiento del clasificador Transformer contiene un total de **50 000 instancias sintéticas**. Su arquitectura se diseñó con tres niveles de variabilidad para simular perturbaciones ópticas y de captura reales:
+El dataset de entrenamiento contiene 50 000 placas generadas con tres niveles de variabilidad para simular condiciones reales:
 
+| Nivel | Proporción | Descripción |
+|-------|:----------:|-------------|
+| A — Formato antiguo | 75% | `ABC123` — regla base: posición 5 determina el día |
+| B — Formato nuevo | 20% | `ABC12D` — el dígito relevante está en posición 4, no en la última |
+| C — Confusión OCR | 5% | Errores reales: `O↔0`, `I↔1`, `S↔5`, `B↔8`, `G↔6`, `Z↔2` |
 
-| Segmento | Proporción | Estructura Sintáctica | Resiliencia y Propósito Técnico |
-|:---:|:---:|:---:|---|
-| **Nivel A** *(Antiguo)* | 75% | `ABC123` | Formato base. La posición indexada 5 (último dígito) determina de manera lineal el día de restricción. |
-| **Nivel B** *(Nuevo)* | 20% | `ABC12D` | Formato contemporáneo (Motos). El dígito numérico relevante se desplaza a la posición 4, alterando la lógica secuencial. |
-| **Nivel C** *(Ruido OCR)* | 5% | Confusiones comunes | Modelado de errores frecuentes del motor OCR: `O↔0`, `I↔1`, `S↔5`, `B↔8`, `G↔6`, `Z↔2`. |
-
-> **💡 Nota de Ingeniería:** A diferencia de un script condicional (`if/else`), el modelo Transformer procesa el carácter confundido tal y como lo entrega el OCR, pero aprende a inferir de forma correcta el dígito real y el día de restricción explotando el **contexto de atención posicional** de la secuencia completa.
+El modelo ve el carácter confundido (como lo entregaría el OCR) pero aprende a predecir el día correcto usando el contexto posicional.
 
 ---
 
-## Uso rápido del modelo (API Python)
-
-Para integrar las predicciones del clasificador Transformer en otros scripts de manera directa, importa y consume la API secuencial del proyecto como se describe a continuación:
+## Uso rápido del modelo (Python)
 
 ```python
 import torch
 from Modern.modulo4_transformer import cargar_modelo, predecir_pico_placa
 
-# 1. Detectar hardware automáticamente (Evita errores de entorno)
-dispositivo = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Cargar modelo
+modelo = cargar_modelo('modelos/transformer_pico_placa.pt')
 
-# 2. Instanciar la arquitectura pasando el parámetro de hardware obligatorio
-modelo = cargar_modelo('modelos/transformer_pico_placa.pt', device=dispositivo)
-
-# 3. Inferencia directa pasando la placa y el dispositivo
-resultado = predecir_pico_placa('SKY424', modelo, device=dispositivo)
-
-# 4. Estructura del diccionario de salida (JSON Response)
-print(resultado)
-# Salida esperada:
-# {
-#   'placa': 'SKY424', 
-#   'restriccion': 'Miércoles', 
-#   'confianza_pct': 98.3,
-#   'formato_valido': True
-# }
+# Predecir
+resultado = predecir_pico_placa('SKY424', modelo)
+# → {'placa': 'SKY424', 'restriccion': 'Miércoles', 'confianza_pct': 98.3, ...}
 ```
