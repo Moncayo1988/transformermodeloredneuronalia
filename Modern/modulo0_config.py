@@ -53,14 +53,18 @@ PATRON_NUEVA   = re.compile(r'^[A-Z]{3}[0-9]{2}[A-Z]$')  # ABC12D
 # Dígito leído por OCR que debería ser una letra (posiciones 0-2)
 DIGITO_A_LETRA = {
     '0': 'O', '1': 'I', '5': 'S', '8': 'B',
-    '6': 'G', '4': 'A', '7': 'T', '2': 'Z'
+    '6': 'G', '4': 'A', '7': 'T', '2': 'Z',
+    '3': 'J', 'W': 'H', '0': 'I',
 }
 
 # Letra leída por OCR que debería ser un dígito (posiciones 3-5)
 LETRA_A_DIGITO = {
     'O': '0', 'I': '1', 'S': '5', 'B': '8',
     'D': '0', 'G': '6', 'Z': '2', 'T': '7',
-    'Q': '0', 'U': '0', 'A': '4', 'L': '1'
+    'Q': '0', 'U': '0', 'A': '4', 'L': '1',
+    'J': '3', 'U': '0', 'M': 'N', 'I': '1',
+    'O': '0',
+
 }
 
 # Confusiones visuales comunes en OCR (usadas en generación de dataset)
@@ -71,6 +75,12 @@ CONFUSIONES_OCR = {
     'B': '8', '8': 'B',
     'G': '6', '6': 'G',
     'Z': '2', '2': 'Z',
+    'J': 'U', 'U': 'J',
+    'I': 'J', 'J': 'I',
+    'W': 'H', 'H': 'W',  
+    'W': 'I', 'I': 'W',  
+    'O': 'I', 'I': 'O',  
+    '0': '1', '1': '0',
 }
 
 # ------------------------------------------------------------------------------
