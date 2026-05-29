@@ -4,13 +4,13 @@ import cv2, numpy as np, os, sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-# ── Descarga del modelo desde HuggingFace al arrancar ──
+# ── Descarga del modelo desde HuggingFace ─────────────
 from huggingface_hub import hf_hub_download
 
 os.makedirs("modelos", exist_ok=True)
 if not os.path.exists("modelos/transformer_pico_placa.pt"):
     hf_hub_download(
-        repo_id="TU_USUARIO/placas-transformer-popayan",
+        repo_id="Huntercito/Deteccion_Pico_y_Placa",
         filename="transformer_pico_placa.pt",
         local_dir="modelos",
         token=os.environ.get("HF_TOKEN")
