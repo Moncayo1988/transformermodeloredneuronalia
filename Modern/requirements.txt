@@ -1,27 +1,39 @@
 # Detección de Placas Vehiculares — Popayán
-# Instalar con: pip install -r requirements.txt
-
-# ── Visión computacional y detección ──────────────────────────────────────────
-ultralytics>=8.0.0
-opencv-python>=4.8.0
-huggingface_hub>=0.20.0
-pillow>=9.0.0
-pillow-avif-plugin
-
-# ── OCR ───────────────────────────────────────────────────────────────────────
-easyocr>=1.7.0
-pytesseract
-
-# ── Deep Learning ─────────────────────────────────────────────────────────────
-# PyTorch: instalar por separado según hardware:
+# Modern/requirements.txt — dependencias completas del proyecto
+#
+# Instalar con:
+#   pip install -r Modern/requirements.txt
+#
+# NOTA: PyTorch debe instalarse por separado antes de este archivo:
 #   GPU NVIDIA: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 #   Solo CPU  : pip install torch torchvision
-torch>=2.0.0
-torchvision>=0.15.0
 
-# ── Datos y visualización ─────────────────────────────────────────────────────
-numpy>=1.24.0
-pandas>=1.5.0
-matplotlib>=3.5.0
-seaborn>=0.12.0
-scikit-learn>=1.0.0
+# ── Detección de objetos (Módulo 1) ───────────────────────────────────────────
+ultralytics>=8.0.0            # YOLO11 — detección de placas vehiculares
+huggingface_hub>=0.20.0       # descarga del modelo YOLO11 especializado
+
+# ── Visión computacional (Módulos 1, 2, 5) ────────────────────────────────────
+opencv-python>=4.8.0          # procesamiento de imagen y video en tiempo real
+Pillow>=9.0.0                 # lectura universal de formatos de imagen
+pillow-avif-plugin            # soporte para imágenes en formato AVIF
+
+# ── OCR (Módulo 2) ────────────────────────────────────────────────────────────
+easyocr>=1.7.0                # OCR neuronal multi-idioma (motor principal)
+pytesseract>=0.3.10           # wrapper Python para Tesseract (motor secundario)
+# Tesseract OCR (sistema) — instalar por separado:
+#   Ubuntu/Debian : sudo apt-get install tesseract-ocr libtesseract-dev
+#   Windows       : https://github.com/UB-Mannheim/tesseract/wiki
+
+# ── Deep Learning (Módulos 3, 4, 5) ──────────────────────────────────────────
+# torch y torchvision: instalar por separado (ver instrucciones arriba)
+torch>=2.0.0                  # framework principal del Transformer
+torchvision>=0.15.0           # utilidades de visión para PyTorch
+
+# ── Datos y análisis (Módulos 3, 4) ──────────────────────────────────────────
+numpy>=1.24.0                 # operaciones matriciales y tokenización
+pandas>=1.5.0                 # DataFrames de resultados OCR
+scikit-learn>=1.0.0           # métricas: classification_report, confusion_matrix
+
+# ── Visualización (Módulos 1, 4) ──────────────────────────────────────────────
+matplotlib>=3.5.0             # gráficas de entrenamiento y resultados
+seaborn>=0.12.0               # heatmap de la matriz de confusión

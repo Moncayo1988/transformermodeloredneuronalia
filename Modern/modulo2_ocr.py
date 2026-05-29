@@ -85,8 +85,8 @@ def recortar_zona_caracteres(imagen_rgb: np.ndarray) -> np.ndarray:
     y marcos decorativos superiores/inferiores antes del OCR.
     """
     h, w = imagen_rgb.shape[:2]
-    y1 = int(h * 0.05)
-    y2 = int(h * 0.88)
+    y1 = int(h * 0.08)
+    y2 = int(h * 0.82)
     return imagen_rgb[y1:y2, :]
 
 
@@ -125,7 +125,7 @@ def preprocesar_por_tipo(
 
     hsv   = cv2.cvtColor(img_den, cv2.COLOR_RGB2HSV)
     gris  = cv2.cvtColor(img_den, cv2.COLOR_RGB2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(4,4))
     gris  = clahe.apply(gris)
 
     _RANGOS_FONDO = {
@@ -137,7 +137,10 @@ def preprocesar_por_tipo(
     if tipo_placa in _RANGOS_FONDO:
         bajo, alto = _RANGOS_FONDO[tipo_placa]
         mask_fondo = cv2.inRange(hsv, bajo, alto)
-        bin_img = cv2.bitwise_not(mask_fondo)
+        gris_mod   = gris.copy()
+        gris_mod[mask_fondo > 0] = 255
+        _, bin_img = cv2.threshold(gris_mod, 0, 255,
+                                   cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     elif tipo_placa == "blanco":
         bin_img = cv2.adaptiveThreshold(
             gris, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -154,9 +157,8 @@ def preprocesar_por_tipo(
         bin_img = cv2.bitwise_not(bin_img)
 
     # Morfología mínima — no destruye trazos finos
-    k = cv2.getStructuringElement(cv2.MORPH_RECT, (2,1))
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (1,1))
     bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, k)
-    bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN, k)
     
 
     return bin_img, img
@@ -181,12 +183,7 @@ def ocr_easyocr_multi(
     whitelist = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     candidatos = []
 
-    lab = cv2.cvtColor(imagen_rgb, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    l = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8)).apply(l)
-    img_contraste = cv2.cvtColor(cv2.merge([l,a,b]), cv2.COLOR_LAB2RGB)
-
-    for img_in in [imagen_rgb, img_contraste, bin_img]:
+    for img_in in [imagen_rgb, bin_img]:
         try:
             res = lector.readtext(
                 img_in, allowlist=whitelist,
@@ -194,7 +191,7 @@ def ocr_easyocr_multi(
                 width_ths=0.9, height_ths=0.9
             )
             for _, texto, conf in res:
-                if conf > 0.25:
+                if conf > 0.3:
                     limpio = re.sub(r'[^A-Z0-9]', '', texto.upper())
                     if limpio:
                         candidatos.append(limpio)

@@ -13,8 +13,11 @@ from modulo2_ocr     import extraer_datos_placa
 from modulo3_dataset import preparar_datos_transformer
 from modulo4_transformer import ejecutar_modulo4, predecir_pico_placa
 
-# Módulo 5 — Cámara en tiempo real
-from modulo5_camara import iniciar_camara
+# Módulo 5 — Asistente conversacional
+from modulo5_asistente import asistente_colab_input
+
+# Módulo 6 — Cámara en tiempo real
+from modulo6_camara import iniciar_camara
 
 
 # ==============================================================================
@@ -171,53 +174,74 @@ def ejecutar_pipeline_completo(
 # 4. PUNTO DE ENTRADA
 # ==============================================================================
 
-if __name__ == "__main__":
-    # Menú de selección de modo
+def _mostrar_menu() -> None:
+    """Imprime el menú principal."""
     print("\n" + "="*60)
     print("   DETECCIÓN DE PLACAS VEHICULARES — POPAYÁN")
     print("="*60)
     print("  [1] Pipeline de imágenes (seleccionar archivos)")
-    print("  [2] Cámara en tiempo real (Módulo 5)")
+    print("  [2] Asistente conversacional (Módulo 5)")
+    print("  [3] Cámara en tiempo real (Módulo 6)")
+    print("  [0] Salir")
     print("="*60)
 
+
+if __name__ == "__main__":
+
     while True:
-        opcion = input("\nElige una opción (1 o 2): ").strip()
-        if opcion in ['1', '2']:
-            break
-        print("   Por favor elige 1 o 2.")
-
-    if opcion == '1':
-        # Pipeline original — sin cambios
-        ejecutar_pipeline_completo(
-            usar_kaggle=False,
-            n_sintetico=48000,
-            epochs=30,
-            ruta_modelo="transformer_pico_placa.pt"
-        )
-
-    elif opcion == '2':
-        # Módulo 5 — Cámara en tiempo real
-        print("\n  Fuente de video:")
-        print("    0 = cámara integrada del portátil")
-        print("    1 = celular (IP Webcam)")
+        _mostrar_menu()
 
         while True:
-            cam_opcion = input("  Elige (0 o 1): ").strip()
-            if cam_opcion in ['0', '1']:
+            opcion = input("\nElige una opción (1, 2, 3 o 0 para salir): ").strip()
+            if opcion in ['0', '1', '2', '3']:
                 break
-            print("  Por favor elige el 0 o el 1.")
+            print("   Por favor elige 1, 2, 3 o 0.")
 
-        if cam_opcion == '1':
-            ip = input("  IP del celular (ej: 192.168.80.21:8080): ").strip()
-            cam = f"http://{ip}/video"
-        else:
-            cam = 0
+        # ── Salir ──────────────────────────────────────────────────────────────
+        if opcion == '0':
+            print("\n  ¡Hasta luego!\n")
+            break
 
-        tf = input("  ¿Usar Transformer? (s/n, Enter=s): ").strip().lower()
-        usar_tf = tf not in ['n', 'no']
+        # ── Opción 1 — Pipeline de imágenes ───────────────────────────────────
+        elif opcion == '1':
+            ejecutar_pipeline_completo(
+                usar_kaggle=False,
+                n_sintetico=48000,
+                epochs=30,
+                ruta_modelo="transformer_pico_placa.pt"
+            )
+            input("\n  Presiona Enter para volver al menú...")
 
-        iniciar_camara(
-            cam_idx          = cam,
-            usar_transformer = usar_tf,
-            gpu              = False
-        )
+        # ── Opción 2 — Asistente conversacional ───────────────────────────────
+        elif opcion == '2':
+            print("\n  Iniciando asistente de Pico y Placa...")
+            print("  (escribe 'salir' dentro del asistente para volver al menú)\n")
+            asistente_colab_input(repetir=True)
+
+        # ── Opción 3 — Cámara en tiempo real ──────────────────────────────────
+        elif opcion == '3':
+            print("\n  Fuente de video:")
+            print("    0 = cámara integrada del portátil")
+            print("    1 = celular (IP Webcam)")
+
+            while True:
+                cam_opcion = input("  Elige (0 o 1): ").strip()
+                if cam_opcion in ['0', '1']:
+                    break
+                print("  Por favor elige el 0 o el 1.")
+
+            if cam_opcion == '1':
+                ip = input("  IP del celular (ej: 192.168.80.21:8080): ").strip()
+                cam = f"http://{ip}/video"
+            else:
+                cam = 0
+
+            tf = input("  ¿Usar Transformer? (s/n, Enter=s): ").strip().lower()
+            usar_tf = tf not in ['n', 'no']
+
+            iniciar_camara(
+                cam_idx          = cam,
+                usar_transformer = usar_tf,
+                gpu              = False
+            )
+            # La cámara vuelve al menú automáticamente al presionar 'q'

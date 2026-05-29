@@ -1,5 +1,5 @@
 # ==============================================================================
-# MÓDULO 5 — DETECCIÓN DE PLACAS EN TIEMPO REAL (CÁMARA WEB)
+# MÓDULO 6 — DETECCIÓN DE PLACAS EN TIEMPO REAL (CÁMARA WEB)
 # ==============================================================================
 # Responsabilidad:
 #   - Capturar video desde la cámara web en tiempo real
@@ -17,11 +17,11 @@
 #   - Importa constantes y reglas        desde modulo0_config
 #
 # Uso directo:
-#   python modulo5_camara.py
-#   python modulo5_camara.py --cam 1                              (cámara externa)
-#   python modulo5_camara.py --cam http://192.168.X.X:4747/video  (DroidCam directo)
-#   python modulo5_camara.py --sin-transformer                    (solo regla posicional)
-#   python modulo5_camara.py --gpu                                (EasyOCR en GPU)
+#   python modulo6_camara.py
+#   python modulo6_camara.py --cam 1                              (cámara externa)
+#   python modulo6_camara.py --cam http://192.168.X.X:4747/video  (DroidCam directo)
+#   python modulo6_camara.py --sin-transformer                    (solo regla posicional)
+#   python modulo6_camara.py --gpu                                (EasyOCR en GPU)
 #
 # Controles en la ventana:
 #   'q' → cerrar       's' → guardar captura JPG
@@ -54,7 +54,7 @@ from modulo4_transformer import cargar_modelo, predecir_pico_placa
 
 # ── Configuración de rendimiento ───────────────────────────────────────────────
 CONF_YOLO      = 0.30   # Umbral mínimo de confianza YOLO
-CONF_OCR       = 0.25   # Confianza mínima EasyOCR (ajustado al nuevo modulo2)
+CONF_OCR       = 0.30   # Confianza mínima EasyOCR — alineado con modulo2_ocr actualizado
 FRAMES_POR_OCR = 20     # Re-ejecutar OCR cada N frames
 SUPER_RES      = 2      # Factor de escala del recorte antes del OCR (×2)
 
@@ -100,18 +100,18 @@ def _cargar_transformer(usar_transformer: bool, device: torch.device):
 
 # ==============================================================================
 # 2. PREPROCESAMIENTO OCR RÁPIDO PARA FRAMES EN VIVO
-#    Aplica los mismos ajustes que hicieron en modulo2_ocr (nueva versión):
-#      - Rango amarillo ampliado: [10,40,60] → [40,255,255]
-#      - CLAHE: clipLimit=2.0, tileGridSize=(8,8)
-#      - Zona de caracteres: y1=5%, y2=88%
-#      - Contraste LAB antes de EasyOCR
-#      - conf_min bajada a 0.25
+#    Alineado con modulo2_ocr actualizado (notebook v11):
+#      - Zona de caracteres: y1=8%, y2=82%
+#      - CLAHE: clipLimit=2.5, tileGridSize=(4,4)
+#      - Morfología: kernel (1,1) + solo MORPH_CLOSE
+#      - 2 pasadas EasyOCR: RGB + binaria (sin contraste LAB)
+#      - conf_min = 0.30
 # ==============================================================================
 
 def _preprocesar_frame(recorte_bgr: np.ndarray) -> tuple:
     """
-    Preprocesamiento rápido alineado con los cambios de modulo2_ocr.
-    Retorna: (recorte_rgb_original, img_contraste_lab, imagen_binaria)
+    Preprocesamiento rápido alineado con modulo2_ocr actualizado.
+    Retorna: (recorte_rgb_original, imagen_binaria)
     """
     h, w = recorte_bgr.shape[:2]
 
@@ -124,17 +124,17 @@ def _preprocesar_frame(recorte_bgr: np.ndarray) -> tuple:
             interpolation=cv2.INTER_LANCZOS4
         )
 
-    # Zona de caracteres: 5%–88% vertical (nuevo modulo2: 0.05 y 0.88)
+    # Zona de caracteres: 8%–82% vertical (modulo2_ocr actualizado)
     hh = recorte_bgr.shape[0]
-    y1 = int(hh * 0.05)
-    y2 = int(hh * 0.88)
+    y1 = int(hh * 0.08)
+    y2 = int(hh * 0.82)
     zona = recorte_bgr[y1:y2, :]
 
     recorte_rgb = cv2.cvtColor(zona, cv2.COLOR_BGR2RGB)
 
-    # CLAHE ajustado al nuevo modulo2: clipLimit=2.0, tileGridSize=(8,8)
+    # CLAHE: clipLimit=2.5, tileGridSize=(4,4) — modulo2_ocr actualizado
     gray  = cv2.cvtColor(zona, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(4, 4))
     gray  = clahe.apply(gray)
 
     # Binarización Otsu
@@ -147,33 +147,26 @@ def _preprocesar_frame(recorte_bgr: np.ndarray) -> tuple:
     if centro.size > 0 and np.mean(centro) < 127:
         bin_img = cv2.bitwise_not(bin_img)
 
-    # Morfología: kernel (2,1) + MORPH_OPEN (nuevo modulo2)
-    k       = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 1))
+    # Morfología: kernel (1,1) + solo MORPH_CLOSE — modulo2_ocr actualizado
+    k       = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
     bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, k)
-    bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN,  k)
 
-    # Contraste LAB (nuevo modulo2: aplica antes de EasyOCR)
-    lab = cv2.cvtColor(recorte_rgb, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    l   = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(l)
-    img_contraste = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2RGB)
-
-    return recorte_rgb, img_contraste, bin_img
+    return recorte_rgb, bin_img
 
 
 def _leer_placa_frame(recorte_bgr: np.ndarray, lector_easy) -> tuple:
     """
-    OCR sobre recorte de frame usando el mismo flujo que el nuevo modulo2_ocr:
-      imagen_rgb → img_contraste_lab → bin_img (3 pasadas)
+    OCR sobre recorte de frame usando el mismo flujo que modulo2_ocr actualizado:
+      imagen_rgb → bin_img (2 pasadas, sin contraste LAB intermedio)
     Usa elegir_mejor_candidato() de modulo2_ocr para corrección posicional.
 
     Retorna: (texto_corregido, formato_exacto_bool)
     """
-    recorte_rgb, img_contraste, bin_img = _preprocesar_frame(recorte_bgr)
+    recorte_rgb, bin_img = _preprocesar_frame(recorte_bgr)
     whitelist  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     candidatos = []
 
-    for img_in in [recorte_rgb, img_contraste, bin_img]:
+    for img_in in [recorte_rgb, bin_img]:
         try:
             res = lector_easy.readtext(
                 img_in, allowlist=whitelist,
@@ -418,7 +411,7 @@ def iniciar_camara(cam_idx = 0,
             cache.clear()
 
         _dibujar_hud(frame, n_det, fps, usa_tf)
-        cv2.imshow("Deteccion de Placas - Popayan (Modulo 5)", frame)
+        cv2.imshow("Deteccion de Placas - Popayan (Modulo 6)", frame)
 
         tecla = cv2.waitKey(1) & 0xFF
         if tecla == ord('q'):
@@ -432,7 +425,7 @@ def iniciar_camara(cam_idx = 0,
 
     cap.release()
     cv2.destroyAllWindows()
-    print("[OK] Modulo 5 finalizado.")
+    print("[OK] Modulo 6 finalizado.")
 
 
 # ==============================================================================
@@ -441,7 +434,7 @@ def iniciar_camara(cam_idx = 0,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Modulo 5 - Deteccion de Placas en Tiempo Real"
+        description="Modulo 6 - Deteccion de Placas en Tiempo Real"
     )
     parser.add_argument('--cam', default='0',
                         help='Indice (0,1,2) o URL del stream (http://...)')

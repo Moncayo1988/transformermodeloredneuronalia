@@ -54,3 +54,8 @@ resultados_*.csv
 *~
 
 # Sistemas operativos
+.DS_Store
+Thumbs.db
+
+# Despliegue en Render
+.render/

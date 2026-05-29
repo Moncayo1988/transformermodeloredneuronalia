@@ -478,7 +478,13 @@ def graficar_confusion(preds: np.ndarray, true: np.ndarray, test_acc: float) -> 
 # 6. GUARDAR Y CARGAR MODELO
 # ==============================================================================
 
-RUTA_MODELO_DEFAULT = "transformer_pico_placa.pt"
+import os as _os
+
+# Ruta absoluta al .pt:  <repo>/modelos/transformer_pico_placa.pt
+# Funciona independientemente del directorio de trabajo actual.
+_DIR_MODULO4     = _os.path.dirname(_os.path.abspath(__file__))
+_DIR_REPO        = _os.path.dirname(_DIR_MODULO4)          # sube de Modern/ a la raíz
+RUTA_MODELO_DEFAULT = _os.path.join(_DIR_REPO, "modelos", "transformer_pico_placa.pt")
 
 
 def guardar_modelo(
@@ -487,6 +493,8 @@ def guardar_modelo(
     hiperparametros: dict = None
 ) -> None:
     """Guarda el modelo y su configuración en un archivo .pt."""
+    # Crear la carpeta destino si no existe (ej. modelos/)
+    _os.makedirs(_os.path.dirname(ruta), exist_ok=True)
     hp = hiperparametros or {
         'vocab_size': VOCAB_SIZE, 'd_model': 64, 'num_heads': 4,
         'd_ff': 256, 'num_layers': 2, 'num_classes': NUM_CLASES,
@@ -510,7 +518,13 @@ def cargar_modelo(
     """Carga el modelo desde un checkpoint .pt."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint = torch.load(ruta, map_location=device)
+    if not _os.path.exists(ruta):
+        raise FileNotFoundError(
+            f"No se encontró el modelo en: '{ruta}'\n"
+            f"  Asegúrate de que el archivo existe en: modelos/transformer_pico_placa.pt\n"
+            f"  Si aún no lo has entrenado, ejecuta primero la opción [4] desde modulo4_transformer.py"
+        )
+    checkpoint = torch.load(ruta, map_location=device, weights_only=True)
     hp         = checkpoint['hyperparams']
     modelo = TransformerPlacas(
         vocab_size=hp['vocab_size'], d_model=hp['d_model'],

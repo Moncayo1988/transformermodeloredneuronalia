@@ -1,10 +1,39 @@
 # Detección de Placas Vehiculares — Popayán
-# Instalar con: pip install -r requirements.txt
+# requirements.txt (raíz del repositorio) — dependencias mínimas de instalación
+#
+# Instalar con:
+#   pip install -r requirements.txt
+#
+# NOTA: PyTorch debe instalarse por separado antes de este archivo:
+#   GPU NVIDIA: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#   Solo CPU  : pip install torch torchvision
 
+# ── Detección de objetos ───────────────────────────────────────────────────────
+ultralytics>=8.0.0
+huggingface_hub>=0.20.0
+
+# ── Visión computacional ───────────────────────────────────────────────────────
+opencv-python>=4.8.0
+Pillow>=9.0.0
+pillow-avif-plugin
+
+# ── OCR ───────────────────────────────────────────────────────────────────────
+easyocr>=1.7.0
+pytesseract>=0.3.10
+# Tesseract OCR (sistema) — instalar por separado:
+#   Ubuntu/Debian : sudo apt-get install tesseract-ocr libtesseract-dev
+#   Windows       : https://github.com/UB-Mannheim/tesseract/wiki
+
+# ── Deep Learning ─────────────────────────────────────────────────────────────
+# torch y torchvision: instalar por separado (ver instrucciones arriba)
 torch>=2.0.0
 torchvision>=0.15.0
-ultralytics>=8.0.0
-easyocr>=1.7.0
-opencv-python>=4.8.0
-huggingface_hub>=0.20.0
+
+# ── Datos y análisis ──────────────────────────────────────────────────────────
 numpy>=1.24.0
+pandas>=1.5.0
+scikit-learn>=1.0.0
+
+# ── Visualización ─────────────────────────────────────────────────────────────
+matplotlib>=3.5.0
+seaborn>=0.12.0
