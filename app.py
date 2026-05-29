@@ -1,12 +1,6 @@
 """
 app.py — Endpoint FastAPI para Detección de Placas Vehiculares (Popayán)
-=========================================================================
-Corregido para usar las firmas reales de los módulos del proyecto:
-  - modulo1: detectar_y_recortar_placa(ruta_imagen) → (recorte_rgb, img_marcada, metodo)
-  - modulo2: elegir_mejor_candidato(candidatos)      → (placa, formato_ok)
-             ocr_easyocr_multi / preprocesar_por_tipo / detectar_tipo_placa
-  - modulo4: cargar_modelo()                         → TransformerPlacas
-             predecir_pico_placa(placa, model)       → dict
+YOLO11 + EasyOCR + Transformer (98.22%)
 """
 
 import os
@@ -14,33 +8,38 @@ import sys
 import tempfile
 import logging
 
-import cv2
-import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("placas-api")
 
-sys.path.insert(0, os.path.dirname(__file__))
+# ── Paths: raíz del proyecto y carpeta Modern/ en sys.path ────────────────────
+_root = os.path.dirname(os.path.abspath(__file__))
+_modern = os.path.join(_root, "Modern")
+for _p in [_root, _modern]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # ── Descarga del modelo Transformer desde HuggingFace ─────────────────────────
 from huggingface_hub import hf_hub_download
 
-RUTA_MODELO = "modelos/transformer_pico_placa.pt"
-os.makedirs("modelos", exist_ok=True)
+RUTA_MODELO = os.path.join(_root, "modelos", "transformer_pico_placa.pt")
+os.makedirs(os.path.join(_root, "modelos"), exist_ok=True)
 
 if not os.path.exists(RUTA_MODELO):
     log.info("Descargando transformer_pico_placa.pt desde HuggingFace...")
     hf_hub_download(
         repo_id="Huntercito/Deteccion_Pico_y_Placa",
         filename="transformer_pico_placa.pt",
-        local_dir="modelos",
+        local_dir=os.path.join(_root, "modelos"),
         token=os.environ.get("HF_TOKEN"),
     )
     log.info("Modelo descargado.")
 
-# ── Imports CORRECTOS según las firmas reales de los módulos ──────────────────
+# ── Imports del proyecto (Modern/ ya está en sys.path) ────────────────────────
+import cv2
+import numpy as np
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
 from Modern.modulo1_deteccion_yolo import detectar_y_recortar_placa
 from Modern.modulo2_ocr import (
     ocr_easyocr_multi,
@@ -55,7 +54,7 @@ log.info("Cargando modelo Transformer...")
 _transformer = cargar_modelo(ruta=RUTA_MODELO)
 log.info("Transformer listo.")
 
-# ── App ───────────────────────────────────────────────────────────────────────
+# ── App FastAPI ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Detección de Placas — Popayán",
     description="YOLO11 + EasyOCR + Transformer (98.22%). Detecta placa y predice Pico y Placa.",
@@ -69,18 +68,25 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "modelo": "YOLO11 + EasyOCR + Transformer", "precision_test": "98.22%"}
+    """Verifica que el servidor esté activo."""
+    return {
+        "status": "ok",
+        "modelo": "YOLO11 + EasyOCR + Transformer",
+        "precision_test": "98.22%",
+    }
 
 
 @app.post("/detect")
 async def detect(file: UploadFile = File(...)):
-    """Recibe imagen JPG/PNG → retorna placa, restricción y confianza."""
+    """
+    Recibe imagen JPG/PNG → retorna placa, restricción Pico y Placa y confianza.
+    """
     if file.content_type not in ("image/jpeg", "image/png", "image/jpg"):
         raise HTTPException(status_code=400, detail="Solo se aceptan imágenes JPG o PNG.")
 
     img_bytes = await file.read()
 
-    # modulo1 recibe ruta de archivo, no array → guardamos en temporal
+    # modulo1 recibe ruta de archivo → guardar en temporal
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         tmp.write(img_bytes)
         ruta_tmp = tmp.name
@@ -129,8 +135,10 @@ async def detect(file: UploadFile = File(...)):
 
 @app.post("/detect/texto")
 def detect_texto(placa: str):
-    """Prueba rápida: recibe texto de placa, retorna predicción sin imagen.
-    Ejemplo: POST /detect/texto?placa=SKY424"""
+    """
+    Prueba rápida sin imagen: recibe texto de placa, retorna predicción.
+    Ejemplo: POST /detect/texto?placa=SKY424
+    """
     if not placa:
         raise HTTPException(status_code=400, detail="El parámetro 'placa' es requerido.")
     return predecir_pico_placa(placa, model=_transformer, verbose=False)
