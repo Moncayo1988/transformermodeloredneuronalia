@@ -8,20 +8,7 @@
 #       1. Tabla de restricción por último dígito
 #       2. Predicción del Transformer (Módulo 4)
 #
-# Fundamento teórico (Prompt Engineering aplicado a agentes):
-#   Se define un contexto de sistema con rol, reglas, límites y formato de
-#   respuesta. Los datos estructurados producidos por el Transformer se
-#   inyectan al prompt para controlar la respuesta del agente.
-#
 # Autor: Salomón Melenje
-#
-# Interfaces disponibles:
-#   - consultar_asistente_pico_placa(pregunta, placa_contexto=None)
-#   - asistente_conversacional_interactivo()   ← widgets Jupyter/Colab
-#   - asistente_colab_input()                  ← consola (Colab/local)
-#
-# Uso directo:
-#   python modulo5_asistente.py
 # ==============================================================================
 
 import re
@@ -94,20 +81,15 @@ INFO_TIPO_NO_DISPONIBLE    = "El notebook clasifica por placa, no por tipo de ve
 # ==============================================================================
 
 def normalizar_texto_agente(texto: str) -> str:
-    """Normaliza texto para comparar días sin depender de tildes o mayúsculas."""
     texto = str(texto).lower().strip()
     texto = unicodedata.normalize("NFD", texto)
     texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
     return texto
 
-
 def limpiar_placa_consulta(texto: str) -> str:
-    """Deja una placa en formato compacto: solo letras y números en mayúscula."""
     return re.sub(r"[^A-Z0-9]", "", str(texto).upper())
 
-
 def extraer_placa_desde_pregunta(pregunta: str) -> str | None:
-    """Extrae placas colombianas antiguas (ABC123) y nuevas (ABC12D)."""
     texto = str(pregunta).upper()
     patrones = [
         r"\b([A-Z]{3})[\s\-]?([0-9]{3})\b",
@@ -119,18 +101,12 @@ def extraer_placa_desde_pregunta(pregunta: str) -> str | None:
             return limpiar_placa_consulta("".join(match.groups()))
     return None
 
-
 def obtener_placa_contexto(placa_contexto: str | None = None,
                             historico_df=None) -> str | None:
-    """
-    Usa la placa escrita por el usuario o, si no existe, intenta tomar la
-    última placa válida detectada por el pipeline YOLO + OCR.
-    """
     if placa_contexto:
         placa = limpiar_placa_consulta(placa_contexto)
         if placa and placa not in ("NA", "NAN"):
             return placa
-
     if historico_df is not None and not historico_df.empty:
         try:
             placas = historico_df.get("placa_detectada", [])
@@ -142,9 +118,7 @@ def obtener_placa_contexto(placa_contexto: str | None = None,
             pass
     return None
 
-
 def _dia_desde_clave(clave: str) -> str:
-    """Devuelve el nombre del día usando las etiquetas reales del Transformer."""
     for dia in DIAS_UNICOS:
         if normalizar_texto_agente(dia) == clave:
             return dia
@@ -155,29 +129,23 @@ def _dia_desde_clave(clave: str) -> str:
     }
     return fallback.get(clave, clave.capitalize())
 
-
 def _clave_dia_desde_fecha(fecha: datetime) -> str:
     return ["lunes","martes","miercoles","jueves","viernes","sabado","domingo"][fecha.weekday()]
-
 
 def _formatear_fecha_consulta(fecha: datetime) -> str:
     clave = _clave_dia_desde_fecha(fecha)
     return f"{fecha.strftime('%Y-%m-%d')} ({_dia_desde_clave(clave)})"
 
-
 def extraer_fecha_desde_pregunta(pregunta: str) -> dict:
-    """Entiende días, hoy, mañana, dd/mm/yyyy, dd-mm-yyyy y '15 de junio'."""
     texto = normalizar_texto_agente(pregunta)
     ahora = datetime.now()
 
     if re.search(r"\besta semana\b", texto):
         return {"tipo": "semana", "texto": "Semana consultada", "dia": None, "clave": None}
-
     if re.search(r"\bhoy\b", texto):
         clave = _clave_dia_desde_fecha(ahora)
         return {"tipo": "fecha", "texto": _formatear_fecha_consulta(ahora),
                 "dia": _dia_desde_clave(clave), "clave": clave}
-
     if re.search(r"\bmanana\b", texto):
         fecha = ahora + timedelta(days=1)
         clave = _clave_dia_desde_fecha(fecha)
@@ -189,8 +157,7 @@ def extraer_fecha_desde_pregunta(pregunta: str) -> dict:
         dia_num = int(match_num.group(1))
         mes_num = int(match_num.group(2))
         anio = int(match_num.group(3)) if match_num.group(3) else ahora.year
-        if anio < 100:
-            anio += 2000
+        if anio < 100: anio += 2000
         try:
             fecha = datetime(anio, mes_num, dia_num)
             clave = _clave_dia_desde_fecha(fecha)
@@ -213,22 +180,25 @@ def extraer_fecha_desde_pregunta(pregunta: str) -> dict:
             except ValueError:
                 return {"tipo": "invalida", "texto": "Fecha invalida", "dia": None, "clave": None}
 
-    for clave in ["lunes","martes","miercoles","jueves","viernes","sabado","domingo"]:
+    _ORDEN_SEMANA = ["lunes","martes","miercoles","jueves","viernes","sabado","domingo"]
+    for clave in _ORDEN_SEMANA:
         if re.search(rf"\b{clave}\b", texto):
+            # Calcular la fecha del proximo dia mencionado (hoy incluido si coincide)
+            objetivo = _ORDEN_SEMANA.index(clave)
+            hoy_idx  = ahora.weekday()          # 0=lunes ... 6=domingo
+            delta    = (objetivo - hoy_idx) % 7  # 0 -> hoy, 1-6 -> dias hacia adelante
+            fecha_objetivo = ahora + timedelta(days=delta)
+            fecha_fmt = fecha_objetivo.strftime("%d/%m/%Y")
             return {"tipo": "dia",
-                    "texto": f"{_dia_desde_clave(clave)} (fecha exacta no especificada)",
+                    "texto": f"{_dia_desde_clave(clave)} {fecha_fmt}",
                     "dia": _dia_desde_clave(clave), "clave": clave}
 
     return {"tipo": "no_especificada", "texto": "No especificada", "dia": None, "clave": None}
 
-
 def extraer_dia_desde_pregunta(pregunta: str) -> str | None:
-    """Compatibilidad con versiones anteriores."""
     return extraer_fecha_desde_pregunta(pregunta).get("dia")
 
-
 def clasificar_intencion_consulta(pregunta: str) -> str:
-    """Clasifica de forma simple la intención conversacional del usuario."""
     texto = normalizar_texto_agente(pregunta)
     if any(p in texto for p in ["horario","hora","excepcion","permiso",
                                   "moto","taxi","carga","camion"]):
@@ -241,18 +211,14 @@ def clasificar_intencion_consulta(pregunta: str) -> str:
         return "consultar_restriccion"
     return "consulta_general"
 
-
 def extraer_ultimo_digito_relevante(placa: str) -> str | None:
-    """Obtiene el último dígito numérico visible de una placa."""
     numeros = re.findall(r"\d", limpiar_placa_consulta(placa))
     return numeros[-1] if numeros else None
-
 
 def interpretar_confianza(confianza: float) -> str:
     if confianza >= 90: return "alta"
     if confianza >= 70: return "media"
     return "baja"
-
 
 def regla_por_dia(dia_clave: str) -> str:
     digitos = DIGITOS_POR_DIA.get(dia_clave)
@@ -266,10 +232,7 @@ def regla_por_dia(dia_clave: str) -> str:
 # 3. CONSTRUCCIÓN DE PROMPT Y GENERACIÓN DE RESPUESTA
 # ==============================================================================
 
-def construir_prompt_agente(pregunta: str, placa: str | None,
-                             fecha_ctx: dict, prediccion: dict | None,
-                             intencion: str) -> str:
-    """Construye el prompt de agente con contexto estructurado."""
+def construir_prompt_agente(pregunta, placa, fecha_ctx, prediccion, intencion):
     return f"""{PROMPT_SISTEMA_ASISTENTE}
 
 Fuentes disponibles:
@@ -292,7 +255,6 @@ Tarea:
 Redacta una respuesta clara, con resultado, motivo, regla aplicada y limites de la fuente.
 """
 
-
 def generar_respuesta_semana() -> tuple[str, None]:
     filas = []
     for clave in ["lunes","martes","miercoles","jueves","viernes"]:
@@ -307,13 +269,10 @@ def generar_respuesta_semana() -> tuple[str, None]:
         + "Excepciones/permisos: no disponibles en las fuentes del notebook."
     ), None
 
-
-def generar_respuesta_sin_placa(fecha_ctx: dict, intencion: str) -> tuple[str, bool | None]:
+def generar_respuesta_sin_placa(fecha_ctx, intencion):
     dia_clave = fecha_ctx.get("clave")
-
     if intencion == "consulta_semana":
         return generar_respuesta_semana()
-
     if dia_clave in DIGITOS_POR_DIA:
         digitos = DIGITOS_POR_DIA[dia_clave]
         respuesta = (
@@ -325,50 +284,39 @@ def generar_respuesta_sin_placa(fecha_ctx: dict, intencion: str) -> tuple[str, b
             "Si quieres validar un vehiculo especifico, escribe la placa."
         )
         return respuesta, None
-
     if dia_clave in ("sabado", "domingo"):
         return (
             f"Para {fecha_ctx['texto']}, la tabla del proyecto no define restriccion de Pico y Placa.\n"
             "Observacion: no puedo afirmar normas externas; solo reporto lo que existe en el notebook."
         ), True
-
     return (
         "Necesito conocer al menos el dia o la placa para ayudarte.\n"
         "Ejemplos: 'Puedo transitar el miercoles con placa ABC123' "
         "o 'Que placas tienen pico y placa el viernes?'."
     ), None
 
-
-def generar_respuesta_agente(pregunta: str, placa: str | None, fecha_ctx: dict,
-                              prediccion: dict | None,
-                              intencion: str) -> tuple[str, bool | None]:
-    """Genera una respuesta natural a partir de la salida del Transformer."""
+def generar_respuesta_agente(pregunta, placa, fecha_ctx, prediccion, intencion):
     texto_norm = normalizar_texto_agente(pregunta)
-
     if intencion == "consulta_fuera_de_fuente":
         temas = []
-        if any(t in texto_norm for t in ["horario","hora"]):
-            temas.append("horarios")
-        if any(t in texto_norm for t in ["moto","taxi","carga","camion"]):
-            temas.append("tipo de vehiculo")
-        if any(t in texto_norm for t in ["excepcion","permiso"]):
-            temas.append("excepciones o permisos")
+        if any(t in texto_norm for t in ["horario","hora"]): temas.append("horarios")
+        if any(t in texto_norm for t in ["moto","taxi","carga","camion"]): temas.append("tipo de vehiculo")
+        if any(t in texto_norm for t in ["excepcion","permiso"]): temas.append("excepciones o permisos")
         tema_txt = ", ".join(temas) if temas else "esa informacion"
         return (
             f"No tengo informacion suficiente sobre {tema_txt} en las fuentes del notebook.\n\n"
             "Lo que si puedo consultar es Pico y Placa por placa y dia para Popayan "
             "usando el Transformer y la tabla del proyecto."
         ), None
-
     if not placa:
         return generar_respuesta_sin_placa(fecha_ctx, intencion)
 
-    restriccion     = prediccion["restriccion"]
-    confianza       = prediccion["confianza_pct"]
-    confianza_txt   = interpretar_confianza(confianza)
-    ultimo_digito   = extraer_ultimo_digito_relevante(placa)
-    dia_consulta    = fecha_ctx.get("dia")
-    dia_clave       = fecha_ctx.get("clave")
+    restriccion      = prediccion["restriccion"]
+    confianza        = prediccion["confianza_pct"]
+    confianza_txt    = interpretar_confianza(confianza)
+    ultimo_digito    = extraer_ultimo_digito_relevante(placa)
+    dia_consulta     = fecha_ctx.get("dia")
+    dia_clave        = fecha_ctx.get("clave")
     restriccion_norm = normalizar_texto_agente(restriccion)
     puede_transitar  = None
 
@@ -386,7 +334,6 @@ def generar_respuesta_agente(pregunta: str, placa: str | None, fecha_ctx: dict,
             f"{detalle_base}\n\n"
             "Para decirte si puedes transitar, dime el dia o la fecha de la consulta."
         )
-
     elif dia_clave in ("sabado", "domingo"):
         puede_transitar = True
         respuesta = (
@@ -396,7 +343,6 @@ def generar_respuesta_agente(pregunta: str, placa: str | None, fecha_ctx: dict,
             f"{detalle_base}\n"
             "Observacion: no se consultan normas externas al notebook."
         )
-
     elif dia_clave == restriccion_norm:
         puede_transitar = False
         respuesta = (
@@ -416,7 +362,6 @@ def generar_respuesta_agente(pregunta: str, placa: str | None, fecha_ctx: dict,
 
     if confianza < 70:
         respuesta += "\n\nAdvertencia: la confianza es baja; conviene verificar la lectura OCR de la placa."
-
     return respuesta, puede_transitar
 
 
@@ -425,19 +370,13 @@ def generar_respuesta_agente(pregunta: str, placa: str | None, fecha_ctx: dict,
 # ==============================================================================
 
 def mostrar_respuesta_visual(resultado: dict) -> None:
-    """Muestra la respuesta en una tarjeta HTML dentro de Colab/Jupyter."""
     estado = "Consulta de restriccion"
     color  = "#2563eb"
     fondo  = "#eff6ff"
-
     if resultado.get("puede_transitar") is True:
-        estado = "Puede transitar"
-        color  = "#15803d"
-        fondo  = "#f0fdf4"
+        estado, color, fondo = "Puede transitar", "#15803d", "#f0fdf4"
     elif resultado.get("puede_transitar") is False:
-        estado = "No puede transitar"
-        color  = "#b91c1c"
-        fondo  = "#fef2f2"
+        estado, color, fondo = "No puede transitar", "#b91c1c", "#fef2f2"
 
     pred  = resultado.get("prediccion", {}) or {}
     probs = pred.get("probabilidades", {}) or {}
@@ -459,25 +398,15 @@ def mostrar_respuesta_visual(resultado: dict) -> None:
 
     respuesta_html = html_lib.escape(resultado["respuesta"]).replace("\n", "<br>")
     html = f"""
-    <div style="
-        font-family:Arial, sans-serif;
-        border:1px solid #d1d5db;
-        border-left:8px solid {color};
-        border-radius:8px;
-        padding:18px 20px;
-        background:{fondo};
-        color:#111827;
-        max-width:820px;">
-      <div style="font-size:13px; font-weight:700; color:{color};
-                  text-transform:uppercase; letter-spacing:.04em;">
-        {estado}
-      </div>
+    <div style="font-family:Arial,sans-serif;border:1px solid #d1d5db;
+        border-left:8px solid {color};border-radius:8px;padding:18px 20px;
+        background:{fondo};color:#111827;max-width:820px;">
+      <div style="font-size:13px;font-weight:700;color:{color};
+                  text-transform:uppercase;letter-spacing:.04em;">{estado}</div>
       <h3 style="margin:6px 0 10px 0;">Asistente de Pico y Placa</h3>
-      <div style="font-size:15px; line-height:1.5; margin:0 0 14px 0;">
-        {respuesta_html}
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr));
-                  gap:10px; margin:12px 0;">
+      <div style="font-size:15px;line-height:1.5;margin:0 0 14px 0;">{respuesta_html}</div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+                  gap:10px;margin:12px 0;">
         <div><strong>Placa</strong><br>{html_lib.escape(str(resultado.get("placa") or "N/A"))}</div>
         <div><strong>Fecha/Dia</strong><br>{html_lib.escape(str(resultado.get("fecha_texto") or "No especificado"))}</div>
         <div><strong>Restriccion</strong><br>{html_lib.escape(str(pred.get("restriccion") or "N/A"))}</div>
@@ -504,19 +433,6 @@ def consultar_asistente_pico_placa(
     model=None,
     mostrar_visual: bool = True
 ) -> dict:
-    """
-    Punto principal de consulta. Recibe lenguaje natural, llama al Transformer
-    y devuelve una respuesta conversacional más una visualización opcional.
-
-    Parámetros:
-      pregunta       : pregunta en lenguaje natural
-      placa_contexto : placa opcional si no se menciona en la pregunta
-      historico_df   : DataFrame de placas detectadas por el pipeline OCR
-      model          : instancia del Transformer (None = carga automática)
-      mostrar_visual : muestra tarjeta HTML en Jupyter/Colab
-
-    Retorna: dict con pregunta, placa, fecha, predicción, respuesta y más.
-    """
     fecha_ctx  = extraer_fecha_desde_pregunta(pregunta)
     placa      = (extraer_placa_desde_pregunta(pregunta)
                   or obtener_placa_contexto(placa_contexto, historico_df))
@@ -534,20 +450,18 @@ def consultar_asistente_pico_placa(
     )
 
     resultado = {
-        "pregunta"      : pregunta,
-        "placa"         : placa,
-        "fecha_texto"   : fecha_ctx.get("texto"),
-        "dia_consulta"  : fecha_ctx.get("dia"),
-        "prediccion"    : prediccion or {},
+        "pregunta"       : pregunta,
+        "placa"          : placa,
+        "fecha_texto"    : fecha_ctx.get("texto"),
+        "dia_consulta"   : fecha_ctx.get("dia"),
+        "prediccion"     : prediccion or {},
         "puede_transitar": puede_transitar,
-        "intencion"     : intencion,
-        "prompt_agente" : prompt_agente,
-        "respuesta"     : respuesta,
+        "intencion"      : intencion,
+        "prompt_agente"  : prompt_agente,
+        "respuesta"      : respuesta,
     }
-
     if mostrar_visual:
         mostrar_respuesta_visual(resultado)
-
     return resultado
 
 
@@ -555,12 +469,8 @@ def consultar_asistente_pico_placa(
 # 6. INTERFACES INTERACTIVAS
 # ==============================================================================
 
-def asistente_conversacional_interactivo(model=None, placa_contexto: str | None = None,
-                                          usar_widgets: bool = True) -> dict | None:
-    """
-    Lanza una interfaz interactiva. En Colab/Jupyter usa widgets; si no están
-    disponibles, usa un bucle de consola hasta que el usuario escriba 'salir'.
-    """
+def asistente_conversacional_interactivo(model=None, placa_contexto=None,
+                                          usar_widgets=True):
     if usar_widgets:
         try:
             try:
@@ -568,10 +478,8 @@ def asistente_conversacional_interactivo(model=None, placa_contexto: str | None 
                 output.enable_custom_widget_manager()
             except Exception:
                 pass
-
             import ipywidgets as widgets
             from IPython.display import display, clear_output
-
             pregunta     = widgets.Textarea(
                 value="Puedo transitar un miercoles con la placa SKY424?",
                 placeholder="Escribe tu pregunta sobre Pico y Placa",
@@ -584,71 +492,42 @@ def asistente_conversacional_interactivo(model=None, placa_contexto: str | None 
                 description="Placa:",
                 layout=widgets.Layout(width="50%"),
             )
-            boton  = widgets.Button(
-                description="Consultar",
-                button_style="primary",
-                icon="search",
-            )
+            boton  = widgets.Button(description="Consultar", button_style="primary", icon="search")
             salida = widgets.Output()
-
             def _on_click(_):
                 with salida:
                     clear_output()
                     consultar_asistente_pico_placa(
                         pregunta.value,
                         placa_contexto=placa_manual.value or placa_contexto,
-                        model=model,
-                        mostrar_visual=True,
+                        model=model, mostrar_visual=True,
                     )
-
             boton.on_click(_on_click)
             display(widgets.VBox([pregunta, placa_manual, boton, salida]))
-            return {"pregunta": pregunta, "placa": placa_manual,
-                    "boton": boton, "salida": salida}
-
+            return {"pregunta": pregunta, "placa": placa_manual, "boton": boton, "salida": salida}
         except Exception as e:
             print(f"[AVISO] Widgets no disponibles ({e}). Usando consola.")
 
-    # Fallback consola
     print("\nASISTENTE DE PICO Y PLACA")
     print("Escribe una pregunta o 'salir' para terminar.\n")
-
     while True:
         pregunta = input("Pregunta> ").strip()
         if normalizar_texto_agente(pregunta) in ("salir", "exit", "quit"):
             print("Asistente finalizado.")
             break
         resultado = consultar_asistente_pico_placa(
-            pregunta,
-            placa_contexto=placa_contexto,
-            model=model,
-            mostrar_visual=False,
+            pregunta, placa_contexto=placa_contexto, model=model, mostrar_visual=False,
         )
         print(resultado["respuesta"])
-
     return None
 
 
-def asistente_colab_input(model=None, placa_contexto: str | None = None,
-                           historico_df=None, repetir: bool = True) -> dict | None:
-    """
-    Interfaz simple y confiable para Google Colab o terminal local.
-    Usa input(), que siempre muestra un cuadro de texto aunque los widgets
-    no se rendericen.
-    """
+def asistente_colab_input(model=None, placa_contexto=None, historico_df=None, repetir=True):
     placa_sugerida = obtener_placa_contexto(placa_contexto, historico_df)
-
     print("\nASISTENTE DE PICO Y PLACA - CONSULTA EN LENGUAJE NATURAL")
-    print("Ejemplos:")
-    print("  - Puedo transitar hoy?")
-    print("  - Puedo transitar el miercoles con la placa ABC123?")
-    print("  - Que placas tienen pico y placa el viernes?")
-    print("  - Muestrame las restricciones de esta semana")
     if placa_sugerida:
         print(f"\nPlaca detectada/sugerida: {placa_sugerida}")
-        print("Si no escribes placa en la pregunta, usare esa placa como contexto.")
     print("Escribe 'salir' para terminar.\n")
-
     ultimo_resultado = None
     while True:
         pregunta = input("Escribe tu pregunta aqui: ").strip()
@@ -657,40 +536,21 @@ def asistente_colab_input(model=None, placa_contexto: str | None = None,
             break
         if not pregunta:
             print("[AVISO] No escribiste ninguna pregunta.")
-            if not repetir:
-                break
+            if not repetir: break
             continue
-
         ultimo_resultado = consultar_asistente_pico_placa(
-            pregunta,
-            placa_contexto=placa_sugerida,
-            historico_df=historico_df,
-            model=model,
-            mostrar_visual=True,
+            pregunta, placa_contexto=placa_sugerida,
+            historico_df=historico_df, model=model, mostrar_visual=True,
         )
-
-        if not repetir:
-            break
-
+        if not repetir: break
     return ultimo_resultado
 
 
 # ==============================================================================
 # 7. DESPLIEGUE GRADIO — LOCAL (VSCode) Y COLAB
 # ==============================================================================
-# Estas funciones son el puente entre el pipeline (Módulos 1-4) y la interfaz
-# web. Funcionan idénticamente desde VSCode (local) y desde Google Colab.
-#
-# Funciones expuestas:
-#   - respuesta_asistente_gradio(pregunta, placa_manual)  ← adaptador Gradio
-#   - desplegar_asistente_gradio(share)                   ← solo asistente
-#   - procesar_imagen_app_integral(ruta_imagen)            ← pipeline completo
-#   - responder_app_integral(pregunta, placa, estado)      ← asistente + imagen
-#   - desplegar_app_integral_gradio(share)                 ← app completa ★
-# ==============================================================================
 
 def _instalar_gradio() -> None:
-    """Instala Gradio si no está disponible en el entorno actual."""
     import subprocess
     print("[INFO] Instalando Gradio...")
     subprocess.check_call([__import__('sys').executable, "-m", "pip", "install", "gradio", "-q"])
@@ -698,70 +558,157 @@ def _instalar_gradio() -> None:
 
 
 def respuesta_asistente_gradio(pregunta: str, placa_manual: str = "") -> str:
-    """
-    Adaptador del asistente conversacional para la interfaz Gradio.
-    Recibe texto plano y devuelve Markdown con el resultado.
-    """
     pregunta     = str(pregunta     or "").strip()
     placa_manual = str(placa_manual or "").strip()
-
     if not pregunta:
         return "Escribe una pregunta para consultar el Pico y Placa."
 
-    placa_contexto = placa_manual or obtener_placa_contexto()
-    resultado = consultar_asistente_pico_placa(
-        pregunta,
-        placa_contexto=placa_contexto,
-        mostrar_visual=False,
-    )
+    # Si la intención es general (restricción por día, semana completa o fuera
+    # de fuente), NO inyectamos placa de contexto aunque haya una disponible.
+    # Solo usamos placa_contexto cuando el usuario la escribió explícitamente
+    # en el campo "Placa (opcional)" o cuando la pregunta exige una placa
+    # específica (validar_transito / consulta_general).
+    intencion_previa = clasificar_intencion_consulta(pregunta)
+    if intencion_previa in ("consultar_restriccion", "consulta_semana",
+                             "consulta_fuera_de_fuente"):
+        placa_contexto = placa_manual or None
+    else:
+        placa_contexto = placa_manual or obtener_placa_contexto()
 
+    resultado = consultar_asistente_pico_placa(
+        pregunta, placa_contexto=placa_contexto, mostrar_visual=False,
+    )
     pred   = resultado.get("prediccion", {}) or {}
     estado = "Consulta realizada"
-    if resultado.get("puede_transitar") is True:
-        estado = "Puede transitar ✅"
-    elif resultado.get("puede_transitar") is False:
-        estado = "No puede transitar ❌"
-
+    if resultado.get("puede_transitar") is True:  estado = "Puede transitar ✅"
+    elif resultado.get("puede_transitar") is False: estado = "No puede transitar ❌"
     partes = [f"## {estado}", resultado["respuesta"]]
-
     if pred:
         partes += [
-            "",
-            "### Datos del modelo",
+            "", "### Datos del modelo",
             f"- **Placa:** `{resultado.get('placa')}`",
             f"- **Día consultado:** `{resultado.get('dia_consulta') or 'No especificado'}`",
             f"- **Restricción estimada:** `{pred.get('restriccion')}`",
             f"- **Confianza:** `{pred.get('confianza_pct')}%`",
         ]
-
     partes += [
-        "",
-        "### Límites de la fuente",
+        "", "### Límites de la fuente",
         "- Solo se consulta Pico y Placa por placa y día para Popayán.",
         "- Horarios, permisos, excepciones y tipo de vehículo no están disponibles.",
     ]
-
     return "\n".join(partes)
 
 
-def procesar_imagen_app_integral(ruta_imagen) -> tuple:
-    """
-    Pipeline completo desde una imagen subida en Gradio:
-      Módulo 1 (YOLO) → Módulo 2 (OCR) → Módulo 4 (Transformer)
+# ==============================================================================
+# CORRECCIÓN DE EFECTO ESPEJO — SOLUCIÓN DEFINITIVA VÍA JAVASCRIPT
+# ==============================================================================
+# Los navegadores aplican automáticamente `transform: scaleX(-1)` al elemento
+# <video> del preview de la cámara web. El frame capturado llega TAMBIÉN
+# invertido al backend Python porque Gradio toma el snapshot del canvas interno
+# que ya tiene el espejo aplicado.
+#
+# La única forma de corregirlo sin intervención manual del usuario es inyectar
+# JavaScript que:
+#   1. Des-invierta el preview del video (para que el usuario vea la imagen real)
+#   2. Intercepte la captura del canvas interno y aplique flip antes de enviarlo
+#
+# Este JS se inyecta mediante el parámetro `js=` de gr.Blocks, que Gradio
+# ejecuta al cargar la página. Usa un MutationObserver para detectar cuándo
+# el elemento <video> aparece en el DOM (porque Gradio lo crea dinámicamente).
+# ==============================================================================
 
-    Retorna la tupla de 6 elementos que espera la interfaz Gradio:
+_JS_CORREGIR_ESPEJO = """
+function corregirEspejoWebcam() {
+    // ── 1. Revertir el espejo visual del preview ──────────────────────────────
+    // Gradio aplica scaleX(-1) al <video>. Lo neutralizamos con scaleX(-1) de
+    // nuevo (doble negación = imagen normal).
+    const estiloFix = document.createElement('style');
+    estiloFix.textContent = `
+        /* Cancela el espejo del preview de cámara en Gradio */
+        .gradio-container video {
+            transform: scaleX(-1) !important;
+        }
+    `;
+    document.head.appendChild(estiloFix);
+
+    // ── 2. Interceptar la captura del canvas para corregir el frame enviado ───
+    // Gradio captura el frame del <video> dibujándolo en un <canvas> oculto y
+    // luego convierte ese canvas a base64. Parcheamos CanvasRenderingContext2D
+    // para que, cuando se dibuje un <video> en un canvas pequeño (el de captura),
+    // primero apliquemos flip horizontal.
+    const drawImageOriginal = CanvasRenderingContext2D.prototype.drawImage;
+
+    CanvasRenderingContext2D.prototype.drawImage = function(fuente, ...args) {
+        // Solo interceptamos cuando la fuente es un elemento <video>
+        if (fuente instanceof HTMLVideoElement) {
+            const w = this.canvas.width;
+            const h = this.canvas.height;
+            // Flip horizontal: trasladar al extremo derecho y escalar -1 en X
+            this.save();
+            this.translate(w, 0);
+            this.scale(-1, 1);
+            // Ajustar coordenadas x si fueron pasadas como argumentos posicionales
+            if (args.length >= 2 && typeof args[0] === 'number') {
+                args[0] = w - args[0] - (args[2] || w);
+            }
+            drawImageOriginal.call(this, fuente, ...args);
+            this.restore();
+        } else {
+            drawImageOriginal.call(this, fuente, ...args);
+        }
+    };
+
+    console.log('[PicoPlacaIA] Corrección de espejo de webcam activa.');
+}
+"""
+
+
+def procesar_imagen_app_integral(imagen_np, desde_webcam: bool = False) -> tuple:
+    """
+    Pipeline completo desde una imagen capturada en Gradio.
+
+    Parámetros:
+      imagen_np : array NumPy RGB (Gradio type='numpy') o None
+
+    Retorna la tupla de 6 elementos que espera la interfaz:
       (imagen_marcada, recorte, binaria, placa_texto, resumen_md, estado_dict)
     """
+    import numpy as np
+    import tempfile, os
+    import cv2
     from modulo1_deteccion_yolo import detectar_y_recortar_placa
     from modulo2_ocr import extraer_datos_placa
 
     vacio = {"placa": None, "restriccion": None, "confianza": None}
 
-    if ruta_imagen is None:
-        return None, None, None, "", "Sube una imagen para iniciar el análisis.", vacio
+    if imagen_np is None:
+        return None, None, None, "", "Sube o captura una imagen para iniciar el análisis.", vacio, None
 
     try:
-        recorte_rgb, img_marcada_rgb, metodo = detectar_y_recortar_placa(ruta_imagen)
+        # ── Corrección de espejo (solo webcam) ────────────────────────────────
+        # El flip se aplica únicamente cuando la imagen viene de la cámara web.
+        # Las imágenes subidas desde archivo llegan con orientación correcta.
+        if desde_webcam:
+            imagen_np = np.ascontiguousarray(imagen_np[:, ::-1])
+
+        # ── Guardar array como archivo temporal ────────────────────────────────
+        # detectar_y_recortar_placa espera una ruta (filepath), no un ndarray.
+        # Convertimos RGB → BGR para que OpenCV/YOLO lo lea correctamente.
+        imagen_bgr = cv2.cvtColor(imagen_np, cv2.COLOR_RGB2BGR)
+        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        cv2.imwrite(tmp.name, imagen_bgr)
+        ruta_temp = tmp.name
+        tmp.close()
+
+        try:
+            recorte_rgb, img_marcada_rgb, metodo = detectar_y_recortar_placa(ruta_temp)
+        finally:
+            # Siempre limpiar el archivo temporal
+            try:
+                os.remove(ruta_temp)
+            except Exception:
+                pass
+
         if recorte_rgb is None:
             return None, None, None, "", "No se detectó ninguna placa en la imagen.", vacio
 
@@ -790,10 +737,10 @@ def procesar_imagen_app_integral(ruta_imagen) -> tuple:
             confianza_txt      = "No disponible"
 
         estado = {
-            "placa"       : placa,
+            "placa"        : placa,
             "ultimo_digito": ultimo,
-            "restriccion" : restriccion_modelo,
-            "confianza"   : confianza,
+            "restriccion"  : restriccion_modelo,
+            "confianza"    : confianza,
         }
 
         resumen = "\n".join([
@@ -817,21 +764,19 @@ def procesar_imagen_app_integral(ruta_imagen) -> tuple:
 
 
 def responder_app_integral(pregunta: str, placa_manual: str, estado_imagen: dict) -> str:
-    """Responde combinando la placa detectada por imagen y la pregunta del usuario."""
     estado_imagen  = estado_imagen or {}
-    placa_contexto = str(placa_manual or "").strip() or estado_imagen.get("placa") or ""
+    # Para consultas generales (por día o semana) no inyectamos placa de contexto.
+    # Para validaciones individuales sí permitimos usar la placa de la imagen.
+    intencion_previa = clasificar_intencion_consulta(str(pregunta or ""))
+    if intencion_previa in ("consultar_restriccion", "consulta_semana",
+                             "consulta_fuera_de_fuente"):
+        placa_contexto = str(placa_manual or "").strip() or ""
+    else:
+        placa_contexto = str(placa_manual or "").strip() or estado_imagen.get("placa") or ""
     return respuesta_asistente_gradio(pregunta, placa_contexto)
 
 
-def desplegar_asistente_gradio(share: bool = False) -> object:
-    """
-    Despliega solo el asistente conversacional como app web con Gradio.
-    Útil para una demo rápida sin necesidad de subir imágenes.
-
-    Parámetros:
-      share : False → solo accesible en http://localhost:7860 (recomendado para VSCode)
-              True  → genera enlace público temporal (útil en Colab)
-    """
+def desplegar_asistente_gradio(share: bool = True) -> object:
     try:
         import gradio as gr
     except ImportError:
@@ -850,7 +795,6 @@ def desplegar_asistente_gradio(share: bool = False) -> object:
             "**Fuente interna:** Transformer del Módulo 4 + tabla de Pico y Placa. "
             "No inventa horarios, excepciones ni permisos."
         )
-
         with gr.Row():
             pregunta = gr.Textbox(
                 label="Pregunta",
@@ -862,13 +806,10 @@ def desplegar_asistente_gradio(share: bool = False) -> object:
                 value=placa_sugerida,
                 placeholder="Opcional si la pregunta ya incluye la placa",
             )
-
         with gr.Row():
             boton   = gr.Button("Consultar", variant="primary")
             limpiar = gr.Button("Limpiar")
-
         salida = gr.Markdown(label="Respuesta")
-
         gr.Examples(
             examples=[
                 ["¿Puedo transitar hoy?",                             placa_sugerida],
@@ -876,23 +817,20 @@ def desplegar_asistente_gradio(share: bool = False) -> object:
                 ["¿Qué placas tienen pico y placa el viernes?",        ""],
                 ["Muéstrame las restricciones de esta semana",          ""],
             ],
-            inputs=[pregunta, placa],
-            outputs=salida,
-            fn=respuesta_asistente_gradio,
-            cache_examples=False,
+            inputs=[pregunta, placa], outputs=salida,
+            fn=respuesta_asistente_gradio, cache_examples=False,
         )
-
-        boton.click(fn=respuesta_asistente_gradio,  inputs=[pregunta, placa], outputs=salida)
+        boton.click(fn=respuesta_asistente_gradio, inputs=[pregunta, placa], outputs=salida)
         pregunta.submit(fn=respuesta_asistente_gradio, inputs=[pregunta, placa], outputs=salida)
-        limpiar.click(fn=lambda: ("", placa_sugerida, ""),
-                      inputs=None, outputs=[pregunta, placa, salida])
+        limpiar.click(fn=lambda: ("", placa_sugerida, ""), inputs=None,
+                      outputs=[pregunta, placa, salida])
 
     print("[OK] Lanzando asistente Gradio...")
     demo.launch(share=share, debug=False, inbrowser=True)
     return demo
 
 
-def desplegar_app_integral_gradio(share: bool = False) -> object:
+def desplegar_app_integral_gradio(share: bool = True) -> object:
     """
     Despliega la app completa con Gradio:
       · Módulo 1 — Subida y detección de placa (YOLO)
@@ -900,11 +838,14 @@ def desplegar_app_integral_gradio(share: bool = False) -> object:
       · Módulo 4 — Predicción del Transformer
       · Módulo 5 — Asistente conversacional
 
-    Funciona igual desde VSCode (local) y desde Google Colab.
+    La corrección de espejo de webcam se aplica automáticamente vía JavaScript:
+      · El preview del video se muestra sin espejo (imagen real)
+      · El frame capturado al hacer clic en el obturador también llega
+        sin espejo al backend Python
+      · No requiere ninguna acción por parte del usuario
 
     Parámetros:
-      share : False → http://localhost:7860 (VSCode / uso local) ← recomendado
-              True  → enlace público temporal (Colab o demo remota)
+      share : False → http://localhost:7860  |  True → enlace público temporal
     """
     try:
         import gradio as gr
@@ -912,7 +853,12 @@ def desplegar_app_integral_gradio(share: bool = False) -> object:
         _instalar_gradio()
         import gradio as gr
 
-    with gr.Blocks(title="App Pico y Placa IA — Popayán") as demo:
+    # js= se ejecuta al cargar la página; instala el parche de espejo una sola vez
+    with gr.Blocks(
+        title="App Pico y Placa IA — Popayán",
+        js=_JS_CORREGIR_ESPEJO,
+    ) as demo:
+
         estado_imagen = gr.State({"placa": None, "restriccion": None, "confianza": None})
 
         gr.Markdown(
@@ -921,17 +867,64 @@ def desplegar_app_integral_gradio(share: bool = False) -> object:
             "y consulta el asistente conversacional."
         )
         gr.Markdown(
-            "**Flujo:** Módulo 1 detección → Módulo 2 OCR → Módulo 4 Transformer → Módulo 5 asistente."
+            "**Flujo:** Módulo 1 detección → Módulo 2 OCR → "
+            "Módulo 4 Transformer → Módulo 5 asistente."
         )
 
         # ── Sección de imagen ─────────────────────────────────────────────────
+        # Se usan dos componentes separados (upload / webcam) para saber con
+        # certeza la fuente de la imagen y aplicar corrección de espejo solo
+        # cuando corresponde (cámara web), sin afectar archivos subidos.
+        fuente_imagen = gr.State("upload")   # rastrea qué pestaña está activa
+
+        with gr.Tabs() as tabs_imagen:
+            with gr.Tab("📁 Subir archivo"):
+                imagen_upload = gr.Image(
+                    label="Imagen del vehículo (archivo)",
+                    type="numpy",
+                    sources=["upload"],
+                )
+            with gr.Tab("📷 Cámara web"):
+                gr.HTML("""
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        background: rgba(251, 191, 36, 0.08);
+                        border: 1px solid rgba(251, 191, 36, 0.35);
+                        border-left: 4px solid #f59e0b;
+                        border-radius: 8px;
+                        padding: 10px 16px;
+                        margin-bottom: 8px;
+                        font-size: 13.5px;
+                        color: #d4a017;
+                    ">
+                        <span style="font-size:18px;">📷</span>
+                        <span>
+                            <strong>Nota sobre la cámara:</strong>
+                            el preview puede verse en espejo — es normal.
+                            El modelo corrige la orientación automáticamente
+                            antes de analizar la imagen.
+                        </span>
+                    </div>
+                """)
+                imagen_webcam = gr.Image(
+                    label="Imagen del vehículo (cámara)",
+                    type="numpy",
+                    sources=["webcam"],
+                )
+
         with gr.Row():
-            imagen = gr.Image(label="Imagen del vehículo", type="filepath")
             with gr.Column():
                 boton_procesar  = gr.Button("Analizar imagen", variant="primary")
-                placa_detectada = gr.Textbox(label="Placa detectada / editable",
-                                             placeholder="ABC123")
+                placa_detectada = gr.Textbox(
+                    label="Placa detectada / editable", placeholder="ABC123"
+                )
                 resumen_imagen  = gr.Markdown(label="Resultado de imagen")
+
+        # Actualizar estado según qué pestaña está activa
+        imagen_upload.change(fn=lambda _: "upload", inputs=imagen_upload, outputs=fuente_imagen)
+        imagen_webcam.change(fn=lambda _: "webcam", inputs=imagen_webcam, outputs=fuente_imagen)
 
         with gr.Row():
             imagen_marcada = gr.Image(label="Detección de placa")
@@ -962,9 +955,16 @@ def desplegar_app_integral_gradio(share: bool = False) -> object:
         )
 
         # ── Eventos ───────────────────────────────────────────────────────────
+        def _procesar_con_fuente(img_upload, img_webcam, fuente):
+            """Selecciona la imagen activa y llama al pipeline con el flag correcto."""
+            if fuente == "webcam":
+                return procesar_imagen_app_integral(img_webcam, desde_webcam=True)
+            else:
+                return procesar_imagen_app_integral(img_upload, desde_webcam=False)
+
         boton_procesar.click(
-            fn=procesar_imagen_app_integral,
-            inputs=imagen,
+            fn=_procesar_con_fuente,
+            inputs=[imagen_upload, imagen_webcam, fuente_imagen],
             outputs=[imagen_marcada, recorte_placa, binaria,
                      placa_detectada, resumen_imagen, estado_imagen],
         )
@@ -998,6 +998,6 @@ if __name__ == "__main__":
     print("     - asistente_conversacional_interactivo()")
     print("     - asistente_colab_input()")
     print("     - desplegar_asistente_gradio(share=False)")
-    print("     - desplegar_app_integral_gradio(share=False)")
+    print("     - desplegar_app_integral_gradio(share=True)")
     print()
-    desplegar_app_integral_gradio(share=False)
+    desplegar_app_integral_gradio(share=True)

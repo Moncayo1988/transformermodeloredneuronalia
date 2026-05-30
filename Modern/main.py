@@ -252,9 +252,9 @@ if __name__ == "__main__":
             # Se abre el navegador automáticamente (inbrowser=True en modulo5)
             # Presionar Ctrl+C en la terminal para detener y volver al menú
             print("\n  Iniciando la app web con Gradio...")
-            print("  Se abrirá automáticamente en http://127.0.0.1:7860")
+            print("  Se abrirá en http://127.0.0.1:7860 (local) y generará un link público para celular.")
             print("  Presiona Ctrl+C en esta terminal para detener y volver al menú.\n")
             try:
-                desplegar_app_integral_gradio(share=False)
+                desplegar_app_integral_gradio(share=True)
             except KeyboardInterrupt:
                 print("\n\n  [OK] App detenida. Volviendo al menú...\n")
