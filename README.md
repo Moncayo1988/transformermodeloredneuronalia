@@ -91,12 +91,14 @@ TransformerModeloRedNeuronalia/
 │   ├── modulo4_transformer.py        # Arquitectura + entrenamiento del Transformer
 │   ├── modulo5_asistente.py          # Asistente conversacional + Gradio integral
 │   ├── modulo6_camara.py             # Detección en tiempo real por cámara web
-│   ├── requirements.txt              # Dependencias completas para uso local
-│   └── resultados_placas.csv         # Historial de detecciones (generado en ejecución)
+│   └── requirements.txt              # Dependencias completas para uso local
+│                                     # resultados_placas.csv — generado en ejecución, ignorado por .gitignore
 │
-├── pico-placa-popayan/               # Carpeta de producción (HuggingFace Spaces)
+├── pico-placa-popayan/               # Repo independiente — HuggingFace Spaces (ignorado por .gitignore raíz)
 │   ├── modelos/
-│   │   └── transformer_pico_placa.pt # Checkpoint del Transformer entrenado
+│   │   └── transformer_pico_placa.pt # Checkpoint del Transformer (rastreado por Git LFS)
+│   ├── scripts/
+│   │   └── subir_modelo.py           # Utilidad local para publicar el .pt en HuggingFace Hub
 │   ├── app.py                        # Punto de entrada para HuggingFace Spaces
 │   ├── modulo0_config.py             # (mismo que Modern/ — sincronizado)
 │   ├── modulo1_deteccion_yolo.py     # (mismo que Modern/ — sincronizado)
@@ -106,24 +108,27 @@ TransformerModeloRedNeuronalia/
 │   ├── modulo4_transformer.py        # (mismo que Modern/ — sincronizado)
 │   ├── modulo5_asistente.py          # (mismo que Modern/ — sincronizado)
 │   ├── modulo6_camara.py             # (mismo que Modern/ — sincronizado)
-│   ├── registros_placas.db           # Base de datos SQLite de consultas
-│   ├── packages.txt                  # Dependencias del sistema (Tesseract, etc.)
+│   ├── .gitattributes                # Configura Git LFS para archivos .pt, .bin, etc.
+│   ├── .gitignore                    # Excluye __pycache__/, *.db, *.pyc
+│   ├── packages.txt                  # Dependencias del sistema (Tesseract, libgl1…)
 │   ├── requirements.txt              # Dependencias Python para HuggingFace
-│   └── subir_modelo.py               # Utilidad para subir el .pt a HuggingFace Hub
+│   └── README.md                     # Frontmatter YAML de configuración del Space
+│                                     # registros_placas.db — generado en ejecución, ignorado por .gitignore
 │
 ├── modelos/                          # Checkpoint raíz (creado al entrenar localmente)
 │   └── transformer_pico_placa.pt
 │
+├── scripts/                          # Utilidades de mantenimiento del proyecto
+│   └── subir_modelo.py               # (movido desde raíz — se ejecuta una sola vez localmente)
+│
 ├── Modelo_IA_Pico_Placa_V12.ipynb   # Notebook principal (Google Colab)
-├── ngrok.exe                         # Túnel público para exposición local
 ├── app.py                            # app.py raíz (referencia, no en producción activa)
 ├── requirements.txt                  # Dependencias completas raíz
-├── requirements_api.txt              # Dependencias mínimas para API
-├── requirements_colab.txt            # Dependencias para Google Colab
-├── render.yaml                       # Configuración intentada en Render.com (ver nota)
-├── modal_app.py                      # Alternativa de despliegue explorada (Modal.com)
+├── .gitignore                        # Excluye venv, __pycache__, *.csv, *.pt, ngrok.exe, pico-placa-popayan/
 └── README.md                         # Este archivo
 ```
+
+> `ngrok.exe` reside localmente en la carpeta `Modern/` pero está excluido del repositorio por `.gitignore`. Descárgalo en [ngrok.com/download](https://ngrok.com/download) si necesitas exposición pública local (opción 4 del menú).
 
 ---
 
@@ -446,14 +451,7 @@ El recuadro con los tres links aparece automáticamente en consola cuando ngrok 
 
 ### Render.com (Intentado — cuenta gratuita insuficiente)
 
-Se configuró `render.yaml` y `app.py` para desplegar como servicio web en Render.com, pero la cuenta gratuita (512 MB de RAM) resultó insuficiente para cargar simultáneamente YOLO11, EasyOCR y el Transformer en producción. Por esta razón se migró a HuggingFace Spaces, que ofrece mayor RAM disponible para inferencia.
-
-```yaml
-# render.yaml (referencia histórica — no en uso activo)
-buildCommand: pip install -r requirements_api.txt
-startCommand: uvicorn app:app --host 0.0.0.0 --port 10000
-healthCheckPath: /health
-```
+Se configuró `render.yaml` y `app.py` para desplegar como servicio web en Render.com, pero la cuenta gratuita (512 MB de RAM) resultó insuficiente para cargar simultáneamente YOLO11, EasyOCR y el Transformer en producción. Por esta razón se migró a HuggingFace Spaces, que ofrece mayor RAM disponible para inferencia. Los archivos `render.yaml`, `modal_app.py` y `requirements_colab.txt` fueron eliminados del repositorio al confirmar que HuggingFace Spaces era la plataforma definitiva.
 
 ---
 
@@ -539,4 +537,48 @@ Hiperparámetros finales: `d_model=64`, `num_heads=4`, `d_ff=256`, `num_layers=2
 
 ---
 
-*Proyecto académico — Popayán, Colombia.*
+## Historial de Cambios Recientes
+
+### 30 mayo 2026 — Limpieza del repositorio y consolidación del stack de despliegue
+
+**Archivos eliminados del repositorio:**
+
+| Archivo | Motivo |
+|---|---|
+| `render.yaml` | Render.com descartado por límite de RAM (512 MB insuficientes) |
+| `modal_app.py` | Alternativa Modal.com descartada al confirmar HuggingFace como plataforma definitiva |
+| `ngrok.exe` | Binario de 32 MB — herramienta local, no parte del proyecto; ahora en `.gitignore` |
+| `requirements_colab.txt` | Redundante con `requirements.txt` raíz; Colab usa el notebook directamente |
+| `.python-version` | Artefacto con nombre inválido (guión bajo en lugar de punto) generado por pyenv |
+| `Modern/resultados_placas.csv` | Archivo de salida generado en ejecución; agregado a `.gitignore` como `*.csv` |
+| `pico-placa-popayan/registros_placas.db` | Base de datos SQLite local mutable; ignorada por `*.db` en `.gitignore` del Space |
+
+**Reorganización de archivos:**
+
+- `subir_modelo.py` movido de la raíz del proyecto a `scripts/subir_modelo.py` (utilidad de ejecución única local, no pertenece al Space de HuggingFace)
+- `subir_modelo.py` movido de la raíz del Space `pico-placa-popayan/` a `pico-placa-popayan/scripts/subir_modelo.py`
+
+**Correcciones de `.gitignore`:**
+
+- `.gitignore` del repo principal (`transformermodeloredneuronalia`): agregado `ngrok.exe` y `pico-placa-popayan/` (este último es un repo Git independiente vinculado a HuggingFace y no debe ser trackeado por el repo raíz)
+- `.gitignore` del Space (`pico-placa-popayan`): corregida la codificación de UTF-16 a UTF-8 para que Git lo lea correctamente (los archivos `__pycache__/`, `*.db` y `*.pyc` no eran ignorados por el problema de codificación)
+
+**Stack de despliegue definitivo:**
+
+| Modo | Plataforma | URL |
+|---|---|---|
+| Producción pública | HuggingFace Spaces | https://huntercito-pico-placa-popayan.hf.space |
+| Desarrollo local público | Gradio + ngrok | `http://127.0.0.1:7860` + link ngrok generado automáticamente |
+| Entrenamiento / experimentación | Google Colab | `Modelo_IA_Pico_Placa_V12.ipynb` |
+
+**Correcciones técnicas aplicadas durante el despliegue en HuggingFace:**
+
+- `packages.txt`: reemplazado `libgl1-mesa-glx` por `libgl1` (paquete renombrado en Debian Trixie, base de Python 3.13 en HuggingFace)
+- `requirements.txt` del Space: agregados `seaborn>=0.12.0` y `scikit-learn>=1.3.0` que faltaban
+- `modulo4_transformer.py`: corregida la resolución de ruta del checkpoint `.pt` para la estructura plana de `/app` en HuggingFace (el módulo asumía una subcarpeta `Modern/` que no existe en el Space)
+- `modulo5_asistente.py`: corregido parámetro `js` movido del constructor `gr.Blocks()` al método `launch()` (cambio de API en Gradio 6.0); corregida función `desplegar_app_integral_gradio()` para aceptar `server_port` y `server_name`; agregada corrección de espejo para cámara web mediante JavaScript
+- Sistema ANPR (`modulo1_deteccion_yolo.py`, `modulo5_asistente.py`): implementado validador de fuente de cámara (solo acepta cámara de celular, rechaza webcam de PC), tracker de vehículos con filtro de duplicados, historial de capturas con SQLite
+
+---
+
+*Proyecto académico — Fundación Universitaria de Popayán — Popayán, Colombia.*
