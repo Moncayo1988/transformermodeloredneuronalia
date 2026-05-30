@@ -1,6 +1,6 @@
 # ==============================================================================
 # MÓDULO 4 — TRANSFORMER DESDE CERO EN PyTorch
-# Autor: Salomón Melenje
+# Autor: Sebastian Moncayo
 # Arquitectura: tokens(B,7) → Embedding → PositionalEncoding → 2×EncoderBlock → MeanPool → FC(5 días)
 # ==============================================================================
 
