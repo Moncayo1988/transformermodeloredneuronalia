@@ -1,12 +1,20 @@
 # ==============================================================================
-# MÓDULO 2 — PREPROCESAMIENTO ADAPTATIVO Y OCR DE ALTA PRECISIÓN
+# MÓDULO 2 — PREPROCESAMIENTO ADAPTATIVO Y OCR DE ALTA PRECISIÓN  v2.1
 # ==============================================================================
 # Responsabilidad:
 #   - Detectar el tipo de placa por color (amarilla, blanca, verde, etc.)
 #   - Preprocesar adaptativamente según el tipo detectado
-#   - Ejecutar OCR dual: EasyOCR + Tesseract (múltiples PSM)
+#   - Ejecutar OCR triple: EasyOCR (color + binaria + escala de grises) + Tesseract
 #   - Corregir y puntuar candidatos según la estructura colombiana
+#   - Aplicar corrector OCR post-procesado (modulo2b_corrector_ocr)
 #   - Retornar DataFrame con resultado y metadatos
+#
+# Cambios v2.1 respecto a v2.0:
+#   [+] Tercera pasada EasyOCR en escala de grises (mejora binarización destruida)
+#   [+] Integración de modulo2b_corrector_ocr en elegir_mejor_candidato()
+#   [+] Descarte de placas con < 6 chars como N/A (placa fuera del frame)
+#   [+] Campo 'placa_corregida' en el DataFrame para trazabilidad
+#   [+] Mejor detección del motor OCR ganador
 #
 # Entrada : recorte RGB de la placa (numpy array)
 # Salida  : DataFrame con placa, último dígito, tipo, motor OCR, etc.
@@ -24,6 +32,9 @@ from modulo0_config import (
     DIGITO_A_LETRA, LETRA_A_DIGITO,
     asignar_restriccion
 )
+
+# Corrector de errores OCR post-procesado
+from modulo2b_corrector_ocr import corregir_placa, corregir_candidatos
 
 
 # ------------------------------------------------------------------------------
@@ -47,7 +58,6 @@ def obtener_lector_easyocr() -> easyocr.Reader:
 # 2. DETECCIÓN DEL TIPO DE PLACA POR COLOR
 # ------------------------------------------------------------------------------
 
-# Rangos HSV de los fondos de placa colombiana más comunes
 _RANGOS_COLOR = {
     "amarillo": (np.array([10, 40, 60]),  np.array([40, 255, 255])),
     "blanco"  : (np.array([0, 0, 185]),   np.array([180, 55, 255])),
@@ -60,7 +70,6 @@ def detectar_tipo_placa(imagen_rgb: np.ndarray) -> tuple[str, dict]:
     """
     Detecta el color dominante del fondo de la placa.
     Si ningún color supera el 10% de píxeles, retorna "gris".
-
     Retorna: (tipo_str, dict de porcentajes por color)
     """
     hsv  = cv2.cvtColor(imagen_rgb, cv2.COLOR_RGB2HSV)
@@ -81,8 +90,7 @@ def detectar_tipo_placa(imagen_rgb: np.ndarray) -> tuple[str, dict]:
 def recortar_zona_caracteres(imagen_rgb: np.ndarray) -> np.ndarray:
     """
     Recorta el 74% central vertical del recorte de la placa.
-    Elimina texto de ciudad inferior (ej. 'BOGOTÁ', 'CARTAGENA')
-    y marcos decorativos superiores/inferiores antes del OCR.
+    Elimina texto de ciudad inferior y marcos decorativos.
     """
     h, w = imagen_rgb.shape[:2]
     y1 = int(h * 0.08)
@@ -95,14 +103,14 @@ def preprocesar_por_tipo(
     tipo_placa: str
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Preprocesamiento adaptado al color de fondo de la placa:
+    Preprocesamiento adaptado al color de fondo:
       - amarillo/verde/naranja : máscara HSV + Otsu
       - blanco                 : umbral adaptativo gaussiano (ventana 11)
       - gris/desconocido       : CLAHE + Otsu
 
-    Pasos comunes aplicados a todos los tipos:
-      1. Recorte de zona de caracteres
-      2. Escala mínima de 400 px de ancho
+    Pasos comunes:
+      1. Recorte zona de caracteres
+      2. Escala mínima 400 px de ancho
       3. Denoising bilateral suave
       4. CLAHE de contraste local
       5. Binarización según tipo
@@ -113,19 +121,17 @@ def preprocesar_por_tipo(
     """
     img = recortar_zona_caracteres(imagen_rgb)
 
-    # Escala mínima
     h, w = img.shape[:2]
     if w < 400:
         factor = 400 / w
         img = cv2.resize(img, (int(w * factor), int(h * factor)),
                          interpolation=cv2.INTER_LANCZOS4)
 
-    # Denoising preservando bordes tipográficos
     img_den = cv2.fastNlMeansDenoisingColored(img, None, 5, 5, 7, 21)
 
     hsv   = cv2.cvtColor(img_den, cv2.COLOR_RGB2HSV)
     gris  = cv2.cvtColor(img_den, cv2.COLOR_RGB2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(4,4))
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(4, 4))
     gris  = clahe.apply(gris)
 
     _RANGOS_FONDO = {
@@ -157,9 +163,8 @@ def preprocesar_por_tipo(
         bin_img = cv2.bitwise_not(bin_img)
 
     # Morfología mínima — no destruye trazos finos
-    k = cv2.getStructuringElement(cv2.MORPH_RECT, (1,1))
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
     bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, k)
-    
 
     return bin_img, img
 
@@ -173,7 +178,13 @@ def ocr_easyocr_multi(
     bin_img: np.ndarray
 ) -> list[str]:
     """
-    EasyOCR sobre imagen a color Y binarizada.
+    EasyOCR en TRES pasadas:
+      1. Imagen a color (RGB)
+      2. Imagen binarizada
+      3. Imagen en escala de grises convertida a 3 canales
+         → mejora casos donde la binarización destruye la imagen (bajo contraste,
+           ángulo extremo, placa desgastada)
+
     Filtra candidatos con confianza > 0.3.
     Whitelist: solo A-Z y 0-9.
 
@@ -183,7 +194,13 @@ def ocr_easyocr_multi(
     whitelist = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     candidatos = []
 
-    for img_in in [imagen_rgb, bin_img]:
+    # Tercera pasada: escala de grises como imagen RGB (3 canales)
+    gris_3ch = cv2.cvtColor(
+        cv2.cvtColor(imagen_rgb, cv2.COLOR_RGB2GRAY),
+        cv2.COLOR_GRAY2RGB
+    )
+
+    for img_in in [imagen_rgb, bin_img, gris_3ch]:
         try:
             res = lector.readtext(
                 img_in, allowlist=whitelist,
@@ -204,7 +221,6 @@ def ocr_tesseract_multi(bin_img: np.ndarray) -> list[str]:
     """
     Tesseract con PSM 7, 8 y 13 para acumular candidatos.
     Whitelist: solo A-Z y 0-9.
-
     Retorna: lista de strings candidatos limpios.
     """
     whitelist  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -230,7 +246,7 @@ def corregir_placa_colombiana(texto: str) -> str:
     Corrección posicional estricta según el formato colombiano:
       pos 0-2 → deben ser LETRAS  (dígito confundido → letra equivalente)
       pos 3-5 → deben ser DÍGITOS (letra confundida  → dígito equivalente)
-      pos 6   → libre (placa nueva)
+      pos 6   → libre (placa nueva formato moto)
     """
     texto = re.sub(r'[^A-Z0-9]', '', texto.upper())
     if len(texto) > 7:
@@ -269,14 +285,36 @@ def puntuar_candidato(texto: str) -> int:
     return score
 
 
-def elegir_mejor_candidato(candidatos: list[str]) -> tuple[str, bool]:
+def elegir_mejor_candidato(
+    candidatos: list[str],
+    tipo_placa: str = 'blanco'
+) -> tuple[str, bool]:
     """
-    Corrige y puntúa todos los candidatos. Retorna el de mayor puntaje.
+    Pipeline de selección con dos etapas:
+
+    Etapa A — Corrector OCR (modulo2b_corrector_ocr):
+      Aplica correcciones posicionales, recuperación de longitud y validación.
+      Si produce resultados válidos, retorna el más frecuente.
+
+    Etapa B — Fallback posicional clásico:
+      Aplica corregir_placa_colombiana() + puntuar_candidato() sobre todos
+      los candidatos y retorna el de mayor puntaje.
 
     Retorna: (mejor_placa, formato_exacto_bool)
     """
     if not candidatos:
         return "", False
+
+    # ── Etapa A: corrector OCR avanzado ───────────────────────────────────────
+    corregidos_avanzados = corregir_candidatos(
+        candidatos, tipo_placa=tipo_placa, verbose=False
+    )
+    if corregidos_avanzados:
+        mejor = corregidos_avanzados[0]
+        fmt   = bool(PATRON_ANTIGUA.match(mejor) or PATRON_NUEVA.match(mejor))
+        return mejor, fmt
+
+    # ── Etapa B: fallback posicional clásico ──────────────────────────────────
     corregidos = [corregir_placa_colombiana(c) for c in candidatos if c]
     puntuados  = [(c, puntuar_candidato(c)) for c in corregidos if c]
     if not puntuados:
@@ -291,15 +329,18 @@ def elegir_mejor_candidato(candidatos: list[str]) -> tuple[str, bool]:
 # 6. PIPELINE OCR COMPLETO
 # ------------------------------------------------------------------------------
 
-def extraer_datos_placa(recorte_rgb: np.ndarray) -> tuple[pd.DataFrame | None, np.ndarray | None]:
+def extraer_datos_placa(
+    recorte_rgb: np.ndarray
+) -> tuple[pd.DataFrame | None, np.ndarray | None]:
     """
-    Pipeline OCR completo de alta precisión:
+    Pipeline OCR completo de alta precisión v2.1:
       1. Asegura resolución mínima (80×200 px)
       2. Detecta tipo de placa por color
       3. Recorte de zona de caracteres + preprocesamiento adaptativo
-      4. OCR dual: EasyOCR (color + binaria) + Tesseract (PSM 7, 8, 13)
-      5. Corrección posicional y puntuación de candidatos
-      6. Construye DataFrame con resultado y metadatos
+      4. OCR triple: EasyOCR (color + binaria + grises) + Tesseract (PSM 7, 8, 13)
+      5. Corrección y puntuación de candidatos (corrector avanzado + fallback)
+      6. Descarte de placas incompletas (< 6 chars → N/A)
+      7. Construye DataFrame con resultado y metadatos
 
     Retorna: (DataFrame_resultado, imagen_binaria) o (None, None) si falla.
     """
@@ -327,14 +368,20 @@ def extraer_datos_placa(recorte_rgb: np.ndarray) -> tuple[pd.DataFrame | None, n
     print(f"  [EasyOCR]   {cand_easy}")
     print(f"  [Tesseract] {cand_tess}")
 
-    texto_final, formato_exacto = elegir_mejor_candidato(todos)
-    if not texto_final:
-        texto_final = "N/A"
+    texto_final, formato_exacto = elegir_mejor_candidato(todos, tipo_placa=tipo)
 
-    motor = ("EasyOCR"
-             if cand_easy and texto_final[:2] == cand_easy[0][:2]
-             else "Tesseract")
-    print(f"  [Resultado] '{texto_final}' | Formato exacto: {formato_exacto}")
+    # ── Descarte de placa incompleta (recorte YOLO insuficiente) ──────────────
+    if not texto_final or len(texto_final) < 6:
+        if texto_final:
+            print(f"  [WARN] Placa incompleta ({len(texto_final)} chars) "
+                  f"— recorte YOLO insuficiente, se descarta como N/A")
+        texto_final   = "N/A"
+        formato_exacto = False
+
+    # ── Identificar motor OCR ganador ─────────────────────────────────────────
+    motor = _identificar_motor(texto_final, cand_easy, cand_tess)
+
+    print(f"  [Resultado] '{texto_final}' | Formato exacto: {formato_exacto} | Motor: {motor}")
 
     numeros       = re.findall(r'\d+', texto_final)
     ultimo_digito = numeros[-1][-1] if numeros else "N/A"
@@ -348,6 +395,37 @@ def extraer_datos_placa(recorte_rgb: np.ndarray) -> tuple[pd.DataFrame | None, n
         "motor_ocr"       : [motor],
     })
     return df, bin_img
+
+
+def _identificar_motor(
+    texto_final: str,
+    cand_easy  : list[str],
+    cand_tess  : list[str]
+) -> str:
+    """
+    Determina qué motor OCR produjo el candidato ganador.
+    Compara el inicio de texto_final con los candidatos de cada motor.
+    """
+    if texto_final == "N/A":
+        return "N/A"
+
+    prefijo = texto_final[:3]
+
+    for c in cand_easy:
+        if c[:3] == prefijo or c == texto_final:
+            return "EasyOCR"
+
+    for c in cand_tess:
+        if c[:3] == prefijo or c == texto_final:
+            return "Tesseract"
+
+    # Si el corrector modificó el candidato, buscar coincidencia parcial
+    if cand_easy:
+        return "EasyOCR"
+    if cand_tess:
+        return "Tesseract"
+
+    return "N/A"
 
 
 # ------------------------------------------------------------------------------
