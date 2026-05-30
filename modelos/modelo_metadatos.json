@@ -1,0 +1,39 @@
+{
+  "proyecto": "Detección de Placas Vehiculares - Popayán",
+  "modelo": "TransformerPlacas (PyTorch)",
+  "precision_test": 98.22,
+  "arquitectura": {
+    "d_model": 64,
+    "num_heads": 4,
+    "d_ff": 256,
+    "num_layers": 2,
+    "max_len": 7,
+    "vocab_size": 37,
+    "num_clases": 5
+  },
+  "clases": [
+    "Jueves",
+    "Lunes",
+    "Miércoles",
+    "Martes",
+    "Viernes"
+  ],
+  "label2idx": {
+    "Jueves": 0,
+    "Lunes": 1,
+    "Miércoles": 2,
+    "Martes": 3,
+    "Viernes": 4
+  },
+  "descripcion": "Transformer desde cero para clasificación de Pico y Placa en Popayán. Predice el día de restricción vehicular según el último dígito de la placa.",
+  "dataset": {
+    "total_muestras": 50000,
+    "split_train": "80%",
+    "split_test": "20%",
+    "tipos": {
+      "formato_antiguo_limpio": "75% — ABC123",
+      "formato_nuevo": "20% — ABC12D",
+      "con_confusion_ocr": "5%  — ambigüedad O↔0, I↔1, S↔5, B↔8"
+    }
+  }
+}

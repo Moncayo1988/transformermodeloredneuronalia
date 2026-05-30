@@ -1,0 +1,38 @@
+# ==============================================================================
+# Detección de Placas Vehiculares — Popayán
+# requirements_api.txt — dependencias para el servidor FastAPI (Render / cloud)
+#
+# Uso:
+#   pip install -r requirements_api.txt
+#
+# NOTA: torchvision se incluye porque ultralytics lo requiere en tiempo de ejecución.
+#       En plataformas con RAM limitada (≤ 512 MB), el lazy loading de app.py
+#       retarda la carga de modelos al primer request para evitar OOM al arrancar.
+# ==============================================================================
+
+# ── Servidor ASGI ────────────────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# ── Detección y OCR ──────────────────────────────────────────────────────────
+ultralytics>=8.0.0
+easyocr>=1.7.0
+huggingface_hub>=0.20.0
+
+# ── Visión computacional ─────────────────────────────────────────────────────
+opencv-python-headless>=4.8.0   # versión headless: sin dependencias de GUI (X11)
+Pillow>=9.0.0
+
+# ── Deep Learning ────────────────────────────────────────────────────────────
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── Datos ────────────────────────────────────────────────────────────────────
+numpy>=1.24.0
+pandas>=1.5.0
+scikit-learn>=1.0.0
+
+# ── OCR secundario ───────────────────────────────────────────────────────────
+pytesseract>=0.3.10
+seaborn>=0.12.0
