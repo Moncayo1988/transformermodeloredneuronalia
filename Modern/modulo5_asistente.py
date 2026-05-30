@@ -765,13 +765,18 @@ def procesar_imagen_app_integral(imagen_np, desde_webcam: bool = False) -> tuple
 
 def responder_app_integral(pregunta: str, placa_manual: str, estado_imagen: dict) -> str:
     estado_imagen  = estado_imagen or {}
-    # Para consultas generales (por día o semana) no inyectamos placa de contexto.
-    # Para validaciones individuales sí permitimos usar la placa de la imagen.
     intencion_previa = clasificar_intencion_consulta(str(pregunta or ""))
+
+    # Consultas generales (por día, semana o fuera de fuente): ignoran completamente
+    # cualquier placa en contexto — tanto la del campo editable como la de la imagen
+    # analizada — para que la respuesta sea siempre la regla del día, no una
+    # validación individual de la placa que esté registrada en pantalla.
     if intencion_previa in ("consultar_restriccion", "consulta_semana",
                              "consulta_fuera_de_fuente"):
-        placa_contexto = str(placa_manual or "").strip() or ""
+        placa_contexto = ""
     else:
+        # Para validaciones individuales sí se usa la placa: primero la que
+        # escribió el usuario en el campo, luego la detectada en la imagen.
         placa_contexto = str(placa_manual or "").strip() or estado_imagen.get("placa") or ""
     return respuesta_asistente_gradio(pregunta, placa_contexto)
 

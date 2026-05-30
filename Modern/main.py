@@ -5,6 +5,9 @@
 import pandas as pd
 import os
 import sys
+import time
+import threading
+import subprocess
 from tkinter import Tk, filedialog
 
 # Módulos del proyecto
@@ -169,6 +172,74 @@ def ejecutar_pipeline_completo(
     print("\nPipeline finalizado correctamente.")
 
 
+
+# ==============================================================================
+# 5. NGROK — TÚNEL PÚBLICO AUTOMÁTICO
+# ==============================================================================
+
+def _lanzar_ngrok(puerto: int = 7860, ruta_ngrok: str = "ngrok.exe") -> None:
+    """
+    Lanza ngrok en un hilo separado y espera hasta obtener el link público.
+    Busca ngrok.exe en la misma carpeta del proyecto y en el PATH del sistema.
+    """
+    import shutil, urllib.request, json
+
+    # Buscar ngrok: carpeta del script → PATH del sistema
+    directorio = os.path.dirname(os.path.abspath(__file__))
+    candidatos = [
+        os.path.join(directorio, ruta_ngrok),   # mismo directorio que main.py
+        os.path.join(directorio, "..", ruta_ngrok),  # raíz del proyecto
+        shutil.which("ngrok") or "",             # en el PATH
+    ]
+    exe = next((c for c in candidatos if c and os.path.isfile(c)), None)
+
+    if not exe:
+        print("  [NGROK] ngrok.exe no encontrado. Colócalo en la carpeta del proyecto.")
+        print("  [NGROK] Descárgalo en: https://ngrok.com/download")
+        return
+
+    def _run():
+        try:
+            subprocess.Popen(
+                [exe, "http", str(puerto)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            # Esperar hasta que la API local de ngrok esté lista (máx 10 s)
+            url_publica = None
+            for _ in range(20):
+                time.sleep(0.5)
+                try:
+                    with urllib.request.urlopen(
+                        "http://127.0.0.1:4040/api/tunnels", timeout=2
+                    ) as resp:
+                        data = json.loads(resp.read())
+                        tunnels = data.get("tunnels", [])
+                        for t in tunnels:
+                            if t.get("proto") == "https":
+                                url_publica = t["public_url"]
+                                break
+                        if url_publica:
+                            break
+                except Exception:
+                    continue
+
+            if url_publica:
+                print(f"\n  ╔══════════════════════════════════════════════════════╗")
+                print(f"  ║  LINK PÚBLICO (celular / internet):                  ║")
+                print(f"  ║  {url_publica:<52}║")
+                print(f"  ╚══════════════════════════════════════════════════════╝")
+                print("  Abre ese link en Chrome de tu celular.\n")
+            else:
+                print("  [NGROK] No se pudo obtener el link público.")
+                print("  [NGROK] Verifica que el authtoken esté configurado:")
+                print("          ngrok config add-authtoken TU_TOKEN")
+        except Exception as e:
+            print(f"  [NGROK] Error al lanzar ngrok: {e}")
+
+    hilo = threading.Thread(target=_run, daemon=True)
+    hilo.start()
+
 # ==============================================================================
 # 4. MENÚ PRINCIPAL
 # ==============================================================================
@@ -248,13 +319,12 @@ if __name__ == "__main__":
 
         # ── Opción 4 — Interfaz Web de Producción ─────────────────────────────
         elif opcion == '4':
-            # Lanza Gradio localmente en http://127.0.0.1:7860
-            # Se abre el navegador automáticamente (inbrowser=True en modulo5)
-            # Presionar Ctrl+C en la terminal para detener y volver al menú
-            print("\n  Iniciando la app web con Gradio...")
-            print("  Se abrirá en http://127.0.0.1:7860 (local) y generará un link público para celular.")
+            print("\n  Iniciando la app web con Gradio + ngrok...")
+            print("  Local:   http://127.0.0.1:7860")
+            print("  Público: se generará automáticamente (espera unos segundos).")
             print("  Presiona Ctrl+C en esta terminal para detener y volver al menú.\n")
+            _lanzar_ngrok(puerto=7860)          # arranca ngrok en segundo plano
             try:
-                desplegar_app_integral_gradio(share=True)
+                desplegar_app_integral_gradio(share=False)   # Gradio solo local
             except KeyboardInterrupt:
                 print("\n\n  [OK] App detenida. Volviendo al menú...\n")
