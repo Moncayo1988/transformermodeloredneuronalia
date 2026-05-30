@@ -40,7 +40,7 @@ config.ini
 *.csv
 *.pth
 *.pth.tar
-*.pt
+resultados_*.pt
 *.onnx
 *.h5
 resultados_*.csv
@@ -59,3 +59,6 @@ Thumbs.db
 
 # Despliegue en Render
 .render/
+
+# HuggingFace Spaces — repositorio Git independiente
+pico-placa-popayan/
