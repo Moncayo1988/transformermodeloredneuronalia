@@ -1,6 +1,6 @@
 # ==============================================================================
 # MÓDULO 1 — DETECCIÓN DE PLACA VEHICULAR CON YOLO
-# Autor: Salomón Melenje
+# Autor: Michael Giraldo Buitrón.
 # Entrada : ruta de imagen (JPG, PNG, WEBP, AVIF)
 # Salida  : recorte RGB de la placa, imagen marcada, método usado
 # ==============================================================================
