@@ -67,10 +67,14 @@ COLORES_DIA = {
     'Viernes'  : (0,     0, 255),   # Rojo
 }
 
-# Ruta del modelo Transformer (../modelos/ relativo a /Modern/)
-_DIR_BASE    = os.path.dirname(os.path.abspath(__file__))
-_RUTA_MODELO = os.path.join(os.path.dirname(_DIR_BASE),
-                             'modelos', 'transformer_pico_placa.pt')
+# Ruta del modelo Transformer (../modelos/ relativo a /Modern/, o cwd en Colab)
+try:
+    _DIR_BASE    = os.path.dirname(os.path.abspath(__file__))
+    _RUTA_MODELO = os.path.join(os.path.dirname(_DIR_BASE),
+                                 'modelos', 'transformer_pico_placa.pt')
+except NameError:
+    # Entorno notebook/Colab
+    _RUTA_MODELO = os.path.join(os.getcwd(), 'transformer_pico_placa.pt')
 
 
 # ==============================================================================

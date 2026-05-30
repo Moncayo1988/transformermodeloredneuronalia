@@ -481,10 +481,15 @@ def graficar_confusion(preds: np.ndarray, true: np.ndarray, test_acc: float) -> 
 import os as _os
 
 # Ruta absoluta al .pt:  <repo>/modelos/transformer_pico_placa.pt
-# Funciona independientemente del directorio de trabajo actual.
-_DIR_MODULO4     = _os.path.dirname(_os.path.abspath(__file__))
-_DIR_REPO        = _os.path.dirname(_DIR_MODULO4)          # sube de Modern/ a la raíz
-RUTA_MODELO_DEFAULT = _os.path.join(_DIR_REPO, "modelos", "transformer_pico_placa.pt")
+# Funciona tanto como script .py (tiene __file__) como importado desde un
+# notebook Colab/Jupyter (donde __file__ no existe y el .pt vive en /content/).
+try:
+    _DIR_MODULO4        = _os.path.dirname(_os.path.abspath(__file__))
+    _DIR_REPO           = _os.path.dirname(_DIR_MODULO4)   # sube de Modern/ a la raíz
+    RUTA_MODELO_DEFAULT = _os.path.join(_DIR_REPO, "modelos", "transformer_pico_placa.pt")
+except NameError:
+    # Entorno notebook/Colab: el modelo se guarda en el directorio de trabajo
+    RUTA_MODELO_DEFAULT = _os.path.join(_os.getcwd(), "transformer_pico_placa.pt")
 
 
 def guardar_modelo(
@@ -494,7 +499,9 @@ def guardar_modelo(
 ) -> None:
     """Guarda el modelo y su configuración en un archivo .pt."""
     # Crear la carpeta destino si no existe (ej. modelos/)
-    _os.makedirs(_os.path.dirname(ruta), exist_ok=True)
+    ruta_dir = _os.path.dirname(ruta)
+    if ruta_dir:
+        _os.makedirs(ruta_dir, exist_ok=True)
     hp = hiperparametros or {
         'vocab_size': VOCAB_SIZE, 'd_model': 64, 'num_heads': 4,
         'd_ff': 256, 'num_layers': 2, 'num_classes': NUM_CLASES,
@@ -515,17 +522,34 @@ def cargar_modelo(
     ruta: str = RUTA_MODELO_DEFAULT,
     device: torch.device = None
 ) -> TransformerPlacas:
-    """Carga el modelo desde un checkpoint .pt."""
+    """Carga el modelo desde un checkpoint .pt.
+
+    Si 'ruta' no existe y hay una copia plana en el directorio de trabajo
+    (comportamiento habitual en Colab/notebook), la usa automáticamente.
+    """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Fallback Colab: si la ruta canónica no existe, buscar en cwd
     if not _os.path.exists(ruta):
-        raise FileNotFoundError(
-            f"No se encontró el modelo en: '{ruta}'\n"
-            f"  Asegúrate de que el archivo existe en: modelos/transformer_pico_placa.pt\n"
-            f"  Si aún no lo has entrenado, ejecuta primero la opción [4] desde modulo4_transformer.py"
-        )
-    checkpoint = torch.load(ruta, map_location=device, weights_only=True)
-    hp         = checkpoint['hyperparams']
+        nombre   = _os.path.basename(ruta)
+        ruta_cwd = _os.path.join(_os.getcwd(), nombre)
+        if _os.path.exists(ruta_cwd):
+            ruta = ruta_cwd
+        else:
+            raise FileNotFoundError(
+                f"No se encontró el modelo en: '{ruta}'\n"
+                f"  Asegúrate de que el archivo existe en: modelos/transformer_pico_placa.pt\n"
+                f"  Si aún no lo has entrenado, ejecuta primero el Módulo 4 completo."
+            )
+
+    # weights_only=True requiere PyTorch ≥ 2.0 — fallback para versiones anteriores
+    try:
+        checkpoint = torch.load(ruta, map_location=device, weights_only=True)
+    except TypeError:
+        checkpoint = torch.load(ruta, map_location=device)
+
+    hp = checkpoint['hyperparams']
     modelo = TransformerPlacas(
         vocab_size=hp['vocab_size'], d_model=hp['d_model'],
         num_heads=hp['num_heads'],   d_ff=hp['d_ff'],

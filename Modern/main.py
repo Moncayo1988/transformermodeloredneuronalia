@@ -4,6 +4,7 @@
 
 import pandas as pd
 import os
+import sys
 from tkinter import Tk, filedialog
 
 # Módulos del proyecto
@@ -13,8 +14,8 @@ from modulo2_ocr     import extraer_datos_placa
 from modulo3_dataset import preparar_datos_transformer
 from modulo4_transformer import ejecutar_modulo4, predecir_pico_placa
 
-# Módulo 5 — Asistente conversacional
-from modulo5_asistente import asistente_colab_input
+# Módulo 5 — Asistente conversacional + despliegue Gradio
+from modulo5_asistente import asistente_colab_input, desplegar_app_integral_gradio
 
 # Módulo 6 — Cámara en tiempo real
 from modulo6_camara import iniciar_camara
@@ -34,19 +35,18 @@ def pipeline_imagen_local() -> pd.DataFrame:
         "placa_detectada", "ultimo_digito", "longitud_valida",
         "formato_exacto", "tipo_placa", "motor_ocr"
     ])
-    
+
     print("🚀 Iniciando Pipeline de Detección de Placas (Modo Local)\n")
 
     while True:
-        # Crear ventana oculta para seleccionar archivo
         root = Tk()
         root.withdraw()
-        
+
         ruta_imagen = filedialog.askopenfilename(
             title="Seleccionar imagen de vehículo",
             filetypes=[("Imágenes", "*.jpg *.jpeg *.png *.JPG *.PNG *.bmp")]
         )
-        
+
         if not ruta_imagen:
             print("\n[FIN] No se seleccionaron más imágenes.")
             break
@@ -93,7 +93,7 @@ def _fila_vacia() -> pd.DataFrame:
 
 
 def _continuar_procesando() -> bool:
-    """Pregunta si quiere procesar otra imagen"""
+    """Pregunta si quiere procesar otra imagen."""
     while True:
         resp = input("\n¿Procesar otra imagen? (s/n): ").strip().lower()
         if resp in ['s', 'si', 'y', 'yes']:
@@ -104,7 +104,7 @@ def _continuar_procesando() -> bool:
 
 
 def _visualizar_resultado(img_marcada, imagen_binaria, recorte_rgb, df_resultado, metodo, nombre_archivo):
-    """Muestra los 3 paneles (igual que antes)"""
+    """Muestra los 3 paneles de diagnóstico (YOLO · binarización · recorte)."""
     placa = df_resultado['placa_detectada'].values[0]
     dia   = asignar_restriccion(df_resultado['ultimo_digito'].values[0])
 
@@ -149,7 +149,7 @@ def exportar_csv(historico_df: pd.DataFrame, ruta: str = 'resultados_placas.csv'
 
 
 # ==============================================================================
-# 3. EJECUCIÓN COMPLETA
+# 3. EJECUCIÓN COMPLETA (Opción 1)
 # ==============================================================================
 
 def ejecutar_pipeline_completo(
@@ -158,12 +158,11 @@ def ejecutar_pipeline_completo(
     epochs: int = 30,
     ruta_modelo: str = "transformer_pico_placa.pt"
 ) -> None:
-    
+
     print("="*70)
     print("          PIPELINE COMPLETO - DETECCIÓN DE PLACAS")
     print("="*70)
 
-    # FASE 1 — Procesamiento de imágenes locales
     historico_df = pipeline_imagen_local()
     exportar_csv(historico_df)
 
@@ -171,7 +170,7 @@ def ejecutar_pipeline_completo(
 
 
 # ==============================================================================
-# 4. PUNTO DE ENTRADA
+# 4. MENÚ PRINCIPAL
 # ==============================================================================
 
 def _mostrar_menu() -> None:
@@ -182,6 +181,7 @@ def _mostrar_menu() -> None:
     print("  [1] Pipeline de imágenes (seleccionar archivos)")
     print("  [2] Asistente conversacional (Módulo 5)")
     print("  [3] Cámara en tiempo real (Módulo 6)")
+    print("  [4] Interfaz Web de Producción (Dashboard de Despliegue)")
     print("  [0] Salir")
     print("="*60)
 
@@ -192,10 +192,10 @@ if __name__ == "__main__":
         _mostrar_menu()
 
         while True:
-            opcion = input("\nElige una opción (1, 2, 3 o 0 para salir): ").strip()
-            if opcion in ['0', '1', '2', '3']:
+            opcion = input("\nElige una opción (1, 2, 3, 4 o 0 para salir): ").strip()
+            if opcion in ['0', '1', '2', '3', '4']:
                 break
-            print("   Por favor elige 1, 2, 3 o 0.")
+            print("   Por favor elige 1, 2, 3, 4 o 0.")
 
         # ── Salir ──────────────────────────────────────────────────────────────
         if opcion == '0':
@@ -222,7 +222,7 @@ if __name__ == "__main__":
         elif opcion == '3':
             print("\n  Fuente de video:")
             print("    0 = cámara integrada del portátil")
-            print("    1 = celular (IP Webcam)")
+            print("    1 = celular (IP Webcam / DroidCam)")
 
             while True:
                 cam_opcion = input("  Elige (0 o 1): ").strip()
@@ -245,3 +245,16 @@ if __name__ == "__main__":
                 gpu              = False
             )
             # La cámara vuelve al menú automáticamente al presionar 'q'
+
+        # ── Opción 4 — Interfaz Web de Producción ─────────────────────────────
+        elif opcion == '4':
+            # Lanza Gradio localmente en http://127.0.0.1:7860
+            # Se abre el navegador automáticamente (inbrowser=True en modulo5)
+            # Presionar Ctrl+C en la terminal para detener y volver al menú
+            print("\n  Iniciando la app web con Gradio...")
+            print("  Se abrirá automáticamente en http://127.0.0.1:7860")
+            print("  Presiona Ctrl+C en esta terminal para detener y volver al menú.\n")
+            try:
+                desplegar_app_integral_gradio(share=False)
+            except KeyboardInterrupt:
+                print("\n\n  [OK] App detenida. Volviendo al menú...\n")

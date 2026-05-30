@@ -676,17 +676,328 @@ def asistente_colab_input(model=None, placa_contexto: str | None = None,
 
 
 # ==============================================================================
-# 7. PUNTO DE ENTRADA
+# 7. DESPLIEGUE GRADIO — LOCAL (VSCode) Y COLAB
+# ==============================================================================
+# Estas funciones son el puente entre el pipeline (Módulos 1-4) y la interfaz
+# web. Funcionan idénticamente desde VSCode (local) y desde Google Colab.
+#
+# Funciones expuestas:
+#   - respuesta_asistente_gradio(pregunta, placa_manual)  ← adaptador Gradio
+#   - desplegar_asistente_gradio(share)                   ← solo asistente
+#   - procesar_imagen_app_integral(ruta_imagen)            ← pipeline completo
+#   - responder_app_integral(pregunta, placa, estado)      ← asistente + imagen
+#   - desplegar_app_integral_gradio(share)                 ← app completa ★
+# ==============================================================================
+
+def _instalar_gradio() -> None:
+    """Instala Gradio si no está disponible en el entorno actual."""
+    import subprocess
+    print("[INFO] Instalando Gradio...")
+    subprocess.check_call([__import__('sys').executable, "-m", "pip", "install", "gradio", "-q"])
+    print("[OK] Gradio instalado.")
+
+
+def respuesta_asistente_gradio(pregunta: str, placa_manual: str = "") -> str:
+    """
+    Adaptador del asistente conversacional para la interfaz Gradio.
+    Recibe texto plano y devuelve Markdown con el resultado.
+    """
+    pregunta     = str(pregunta     or "").strip()
+    placa_manual = str(placa_manual or "").strip()
+
+    if not pregunta:
+        return "Escribe una pregunta para consultar el Pico y Placa."
+
+    placa_contexto = placa_manual or obtener_placa_contexto()
+    resultado = consultar_asistente_pico_placa(
+        pregunta,
+        placa_contexto=placa_contexto,
+        mostrar_visual=False,
+    )
+
+    pred   = resultado.get("prediccion", {}) or {}
+    estado = "Consulta realizada"
+    if resultado.get("puede_transitar") is True:
+        estado = "Puede transitar ✅"
+    elif resultado.get("puede_transitar") is False:
+        estado = "No puede transitar ❌"
+
+    partes = [f"## {estado}", resultado["respuesta"]]
+
+    if pred:
+        partes += [
+            "",
+            "### Datos del modelo",
+            f"- **Placa:** `{resultado.get('placa')}`",
+            f"- **Día consultado:** `{resultado.get('dia_consulta') or 'No especificado'}`",
+            f"- **Restricción estimada:** `{pred.get('restriccion')}`",
+            f"- **Confianza:** `{pred.get('confianza_pct')}%`",
+        ]
+
+    partes += [
+        "",
+        "### Límites de la fuente",
+        "- Solo se consulta Pico y Placa por placa y día para Popayán.",
+        "- Horarios, permisos, excepciones y tipo de vehículo no están disponibles.",
+    ]
+
+    return "\n".join(partes)
+
+
+def procesar_imagen_app_integral(ruta_imagen) -> tuple:
+    """
+    Pipeline completo desde una imagen subida en Gradio:
+      Módulo 1 (YOLO) → Módulo 2 (OCR) → Módulo 4 (Transformer)
+
+    Retorna la tupla de 6 elementos que espera la interfaz Gradio:
+      (imagen_marcada, recorte, binaria, placa_texto, resumen_md, estado_dict)
+    """
+    from modulo1_deteccion_yolo import detectar_y_recortar_placa
+    from modulo2_ocr import extraer_datos_placa
+
+    vacio = {"placa": None, "restriccion": None, "confianza": None}
+
+    if ruta_imagen is None:
+        return None, None, None, "", "Sube una imagen para iniciar el análisis.", vacio
+
+    try:
+        recorte_rgb, img_marcada_rgb, metodo = detectar_y_recortar_placa(ruta_imagen)
+        if recorte_rgb is None:
+            return None, None, None, "", "No se detectó ninguna placa en la imagen.", vacio
+
+        df_ocr, imagen_binaria = extraer_datos_placa(recorte_rgb)
+        if df_ocr is None or df_ocr.empty:
+            return img_marcada_rgb, recorte_rgb, None, "", \
+                   "Se detectó la zona de placa, pero el OCR no pudo leerla.", vacio
+
+        placa      = str(df_ocr["placa_detectada"].values[0])
+        ultimo     = str(df_ocr["ultimo_digito"].values[0])
+        tipo_placa = str(df_ocr["tipo_placa"].values[0])
+        motor_ocr  = str(df_ocr["motor_ocr"].values[0])
+        restriccion_regla = asignar_restriccion(ultimo)
+
+        pred = None
+        if placa not in ("N/A", "nan", ""):
+            pred = predecir_pico_placa(placa, verbose=False)
+
+        if pred:
+            restriccion_modelo = pred["restriccion"]
+            confianza          = pred["confianza_pct"]
+            confianza_txt      = interpretar_confianza(confianza)
+        else:
+            restriccion_modelo = "No disponible"
+            confianza          = None
+            confianza_txt      = "No disponible"
+
+        estado = {
+            "placa"       : placa,
+            "ultimo_digito": ultimo,
+            "restriccion" : restriccion_modelo,
+            "confianza"   : confianza,
+        }
+
+        resumen = "\n".join([
+            "## Análisis de imagen completado",
+            f"- **Método de detección:** `{metodo}`",
+            f"- **Placa detectada:** `{placa}`",
+            f"- **Último dígito OCR:** `{ultimo}`",
+            f"- **Tipo de placa:** `{tipo_placa}`",
+            f"- **Motor OCR:** `{motor_ocr}`",
+            f"- **Restricción por regla base:** `{restriccion_regla}`",
+            f"- **Restricción por Transformer:** `{restriccion_modelo}`",
+            f"- **Confianza:** `{confianza if confianza is not None else 'N/A'}%` ({confianza_txt})",
+            "",
+            "Ahora puedes preguntar: `¿Puedo transitar hoy?` o `¿Puedo transitar el viernes?`",
+        ])
+
+        return img_marcada_rgb, recorte_rgb, imagen_binaria, placa, resumen, estado
+
+    except Exception as e:
+        return None, None, None, "", f"Error al procesar la imagen: {e}", vacio
+
+
+def responder_app_integral(pregunta: str, placa_manual: str, estado_imagen: dict) -> str:
+    """Responde combinando la placa detectada por imagen y la pregunta del usuario."""
+    estado_imagen  = estado_imagen or {}
+    placa_contexto = str(placa_manual or "").strip() or estado_imagen.get("placa") or ""
+    return respuesta_asistente_gradio(pregunta, placa_contexto)
+
+
+def desplegar_asistente_gradio(share: bool = False) -> object:
+    """
+    Despliega solo el asistente conversacional como app web con Gradio.
+    Útil para una demo rápida sin necesidad de subir imágenes.
+
+    Parámetros:
+      share : False → solo accesible en http://localhost:7860 (recomendado para VSCode)
+              True  → genera enlace público temporal (útil en Colab)
+    """
+    try:
+        import gradio as gr
+    except ImportError:
+        _instalar_gradio()
+        import gradio as gr
+
+    placa_sugerida = obtener_placa_contexto() or ""
+
+    with gr.Blocks(title="Asistente Pico y Placa — Popayán") as demo:
+        gr.Markdown(
+            "# Asistente Pico y Placa — Popayán\n"
+            "Consulta si una placa puede transitar según la tabla del proyecto "
+            "y la predicción del Transformer."
+        )
+        gr.Markdown(
+            "**Fuente interna:** Transformer del Módulo 4 + tabla de Pico y Placa. "
+            "No inventa horarios, excepciones ni permisos."
+        )
+
+        with gr.Row():
+            pregunta = gr.Textbox(
+                label="Pregunta",
+                placeholder="Ej: ¿Puedo transitar hoy con la placa ABC123?",
+                lines=3,
+            )
+            placa = gr.Textbox(
+                label="Placa (opcional)",
+                value=placa_sugerida,
+                placeholder="Opcional si la pregunta ya incluye la placa",
+            )
+
+        with gr.Row():
+            boton   = gr.Button("Consultar", variant="primary")
+            limpiar = gr.Button("Limpiar")
+
+        salida = gr.Markdown(label="Respuesta")
+
+        gr.Examples(
+            examples=[
+                ["¿Puedo transitar hoy?",                             placa_sugerida],
+                ["¿Puedo transitar el miércoles con la placa SKY424?", ""],
+                ["¿Qué placas tienen pico y placa el viernes?",        ""],
+                ["Muéstrame las restricciones de esta semana",          ""],
+            ],
+            inputs=[pregunta, placa],
+            outputs=salida,
+            fn=respuesta_asistente_gradio,
+            cache_examples=False,
+        )
+
+        boton.click(fn=respuesta_asistente_gradio,  inputs=[pregunta, placa], outputs=salida)
+        pregunta.submit(fn=respuesta_asistente_gradio, inputs=[pregunta, placa], outputs=salida)
+        limpiar.click(fn=lambda: ("", placa_sugerida, ""),
+                      inputs=None, outputs=[pregunta, placa, salida])
+
+    print("[OK] Lanzando asistente Gradio...")
+    demo.launch(share=share, debug=False, inbrowser=True)
+    return demo
+
+
+def desplegar_app_integral_gradio(share: bool = False) -> object:
+    """
+    Despliega la app completa con Gradio:
+      · Módulo 1 — Subida y detección de placa (YOLO)
+      · Módulo 2 — OCR adaptativo
+      · Módulo 4 — Predicción del Transformer
+      · Módulo 5 — Asistente conversacional
+
+    Funciona igual desde VSCode (local) y desde Google Colab.
+
+    Parámetros:
+      share : False → http://localhost:7860 (VSCode / uso local) ← recomendado
+              True  → enlace público temporal (Colab o demo remota)
+    """
+    try:
+        import gradio as gr
+    except ImportError:
+        _instalar_gradio()
+        import gradio as gr
+
+    with gr.Blocks(title="App Pico y Placa IA — Popayán") as demo:
+        estado_imagen = gr.State({"placa": None, "restriccion": None, "confianza": None})
+
+        gr.Markdown(
+            "# App Pico y Placa IA — Popayán\n"
+            "Sube una imagen del vehículo, detecta la placa con el pipeline del proyecto "
+            "y consulta el asistente conversacional."
+        )
+        gr.Markdown(
+            "**Flujo:** Módulo 1 detección → Módulo 2 OCR → Módulo 4 Transformer → Módulo 5 asistente."
+        )
+
+        # ── Sección de imagen ─────────────────────────────────────────────────
+        with gr.Row():
+            imagen = gr.Image(label="Imagen del vehículo", type="filepath")
+            with gr.Column():
+                boton_procesar  = gr.Button("Analizar imagen", variant="primary")
+                placa_detectada = gr.Textbox(label="Placa detectada / editable",
+                                             placeholder="ABC123")
+                resumen_imagen  = gr.Markdown(label="Resultado de imagen")
+
+        with gr.Row():
+            imagen_marcada = gr.Image(label="Detección de placa")
+            recorte_placa  = gr.Image(label="Recorte de placa")
+            binaria        = gr.Image(label="Binarización OCR")
+
+        # ── Sección conversacional ────────────────────────────────────────────
+        gr.Markdown("## Consulta conversacional")
+        pregunta = gr.Textbox(
+            label="Pregunta",
+            placeholder="Ej: ¿Puedo transitar hoy?",
+            lines=3,
+        )
+        with gr.Row():
+            boton_preguntar = gr.Button("Preguntar", variant="primary")
+            limpiar         = gr.Button("Limpiar pregunta")
+        salida = gr.Markdown(label="Respuesta del asistente")
+
+        gr.Examples(
+            examples=[
+                "¿Puedo transitar hoy?",
+                "¿Puedo transitar el miércoles?",
+                "¿Qué placas tienen pico y placa el viernes?",
+                "Muéstrame las restricciones de esta semana",
+            ],
+            inputs=pregunta,
+            cache_examples=False,
+        )
+
+        # ── Eventos ───────────────────────────────────────────────────────────
+        boton_procesar.click(
+            fn=procesar_imagen_app_integral,
+            inputs=imagen,
+            outputs=[imagen_marcada, recorte_placa, binaria,
+                     placa_detectada, resumen_imagen, estado_imagen],
+        )
+        boton_preguntar.click(
+            fn=responder_app_integral,
+            inputs=[pregunta, placa_detectada, estado_imagen],
+            outputs=salida,
+        )
+        pregunta.submit(
+            fn=responder_app_integral,
+            inputs=[pregunta, placa_detectada, estado_imagen],
+            outputs=salida,
+        )
+        limpiar.click(fn=lambda: "", inputs=None, outputs=pregunta)
+
+    print("[OK] Lanzando app integral con Gradio...")
+    demo.launch(share=share, debug=False, inbrowser=True)
+    return demo
+
+
+# ==============================================================================
+# 8. PUNTO DE ENTRADA
 # ==============================================================================
 
 if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("MÓDULO 5 — ASISTENTE CONVERSACIONAL DE PICO Y PLACA")
     print("=" * 70)
-    print("[OK] Funciones listas:")
+    print("[OK] Funciones disponibles:")
     print("     - consultar_asistente_pico_placa(pregunta, placa_contexto=None)")
     print("     - asistente_conversacional_interactivo()")
     print("     - asistente_colab_input()")
-    print("\nInterfaz interactiva:")
-
-    asistente_colab_input(repetir=True)
+    print("     - desplegar_asistente_gradio(share=False)")
+    print("     - desplegar_app_integral_gradio(share=False)")
+    print()
+    desplegar_app_integral_gradio(share=False)
