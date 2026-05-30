@@ -313,7 +313,7 @@ El proyecto soporta tres entornos completamente independientes que comparten la 
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/TU_USUARIO/TransformerModeloRedNeuronalia.git
+git clone https://github.com/Moncayo1988/transformermodeloredneuronalia.git
 cd TransformerModeloRedNeuronalia
 
 # 2. Crear entorno virtual
@@ -350,7 +350,7 @@ El notebook `Modelo_IA_Pico_Placa_V12.ipynb` es autónomo. Solo necesitas:
 Para usar los módulos `.py` del repositorio dentro del notebook:
 
 ```python
-!git clone https://github.com/TU_USUARIO/TransformerModeloRedNeuronalia.git /content/repo
+!git clone https://github.com/Moncayo1988/transformermodeloredneuronalia.git /content/repo
 import sys
 sys.path.insert(0, '/content/repo/Modern')
 
