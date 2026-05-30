@@ -2,7 +2,7 @@
 
 **YOLO11 + EasyOCR + Transformer desde cero — Precisión test: 98.22%**
 
-Sistema de inteligencia artificial para detectar placas vehiculares y predecir la restricción de Pico y Placa aplicable en Popayán, Colombia. El pipeline integra detección de objetos, OCR de alta precisión y un clasificador Transformer entrenado desde cero en PyTorch.
+Sistema de inteligencia artificial para detectar placas vehiculares y predecir la restricción de Pico y Placa en Popayán, Colombia. El pipeline integra detección de objetos (YOLO11), OCR de alta precisión (EasyOCR + Tesseract) y un clasificador Transformer entrenado completamente desde cero en PyTorch, desplegado vía Gradio + ngrok y publicado en HuggingFace Spaces.
 
 ---
 
@@ -16,57 +16,61 @@ Sistema de inteligencia artificial para detectar placas vehiculares y predecir l
 6. [Instalación y Configuración](#instalación-y-configuración)
 7. [Ejecución](#ejecución)
 8. [Despliegue](#despliegue)
-9. [Relación entre Módulos y Notebook](#relación-entre-módulos-y-notebook)
-10. [Reglas de Pico y Placa — Popayán](#reglas-de-pico-y-placa--popayán)
+9. [Refactorización de Código](#refactorización-de-código)
+10. [Relación entre Módulos y Notebook](#relación-entre-módulos-y-notebook)
+11. [Reglas de Pico y Placa — Popayán](#reglas-de-pico-y-placa--popayán)
+12. [Precisión del Modelo](#precisión-del-modelo)
 
 ---
 
 ## Arquitectura General
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     ENTORNOS DE EJECUCIÓN                           │
-│                                                                     │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
-│  │  Notebook Colab  │  │  Local (main.py) │  │  API (Render)    │  │
-│  │  V12.ipynb       │  │  + módulos .py   │  │  app.py          │  │
-│  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  │
-│           │                     │                      │            │
-│           └─────────────────────┴──────────────────────┘            │
-│                                 │                                   │
-│                    ┌────────────▼───────────┐                       │
-│                    │   PIPELINE COMPARTIDO  │                       │
-│                    └────────────┬───────────┘                       │
-└─────────────────────────────────┼───────────────────────────────────┘
-                                  │
-          ┌───────────────────────┼───────────────────────┐
-          │                       │                       │
-    ┌─────▼──────┐         ┌──────▼──────┐         ┌─────▼──────┐
-    │ Módulo 0   │         │ Módulo 1    │         │ Módulo 2   │
-    │ Config     │◄────────│ YOLO11      │────────►│ EasyOCR +  │
-    │ Vocabulario│         │ Detección   │         │ Tesseract  │
-    └─────┬──────┘         └─────────────┘         └──────┬─────┘
-          │                                               │
-    ┌─────▼──────┐                                  ┌─────▼──────┐
-    │ Módulo 3   │                                  │ Módulo 4   │
-    │ Dataset    │─────────────────────────────────►│ Transformer│
-    │ Sintético  │                                  │ PyTorch    │
-    └────────────┘                                  └──────┬─────┘
-                                                           │
-                              ┌────────────────────────────┤
-                              │                            │
-                        ┌─────▼──────┐             ┌──────▼─────┐
-                        │ Módulo 5   │             │ Módulo 6   │
-                        │ Asistente  │             │ Cámara     │
-                        │ Gradio     │             │ Tiempo Real│
-                        └─────┬──────┘             └────────────┘
-                              │
-                   ┌──────────▼──────────┐
-                   │  FastAPI (app.py)   │
-                   │  /detect (imagen)   │
-                   │  /detect/texto      │
-                   │  /health            │
-                   └─────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                        ENTORNOS DE EJECUCIÓN                         │
+│                                                                      │
+│  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐  │
+│  │  Notebook Colab  │   │  Local (main.py) │   │  HuggingFace     │  │
+│  │  V12.ipynb       │   │  + módulos .py   │   │  Spaces (app.py) │  │
+│  └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘  │
+│           │                      │                       │            │
+│           └──────────────────────┴───────────────────────┘            │
+│                                  │                                    │
+│                     ┌────────────▼───────────┐                        │
+│                     │   PIPELINE COMPARTIDO  │                        │
+│                     └────────────┬───────────┘                        │
+└──────────────────────────────────┼────────────────────────────────────┘
+                                   │
+           ┌───────────────────────┼───────────────────────┐
+           │                       │                       │
+     ┌─────▼──────┐         ┌──────▼──────┐         ┌─────▼──────┐
+     │ Módulo 0   │         │ Módulo 1    │         │ Módulo 2   │
+     │ Config     │◄────────│ YOLO11      │────────►│ EasyOCR +  │
+     │ Vocabulario│         │ Detección   │         │ Tesseract  │
+     └─────┬──────┘         └─────────────┘         └──────┬─────┘
+           │                                               │
+     ┌─────▼──────┐                                  ┌─────▼──────┐
+     │ Módulo 3   │                                  │ Módulo 4   │
+     │ Dataset    │─────────────────────────────────►│ Transformer│
+     │ Sintético  │                                  │ PyTorch    │
+     └────────────┘                                  └──────┬─────┘
+                                                            │
+                               ┌────────────────────────────┤
+                               │                            │
+                         ┌─────▼──────┐             ┌──────▼─────┐
+                         │ Módulo 5   │             │ Módulo 6   │
+                         │ Asistente  │             │ Cámara     │
+                         │ Gradio     │             │ Tiempo Real│
+                         └─────┬──────┘             └────────────┘
+                               │
+              ┌────────────────┴────────────────┐
+              │                                 │
+   ┌──────────▼──────────┐           ┌──────────▼──────────┐
+   │  Gradio + ngrok     │           │  HuggingFace Spaces  │
+   │  (ejecución local)  │           │  (despliegue público)│
+   │  http://127.0.0.1   │           │  huntercito-pico-    │
+   │  + link ngrok       │           │  placa-popayan       │
+   └─────────────────────┘           └─────────────────────┘
 ```
 
 ---
@@ -76,32 +80,49 @@ Sistema de inteligencia artificial para detectar placas vehiculares y predecir l
 ```
 TransformerModeloRedNeuronalia/
 │
-├── Modern/                          # Paquete principal del proyecto
-│   ├── __init__.py                  # Agrega Modern/ al sys.path automáticamente
-│   ├── modulo0_config.py            # Vocabulario, constantes y reglas Pico y Placa
-│   ├── modulo1_deteccion_yolo.py    # Detección de placa con YOLO11
-│   ├── modulo2_ocr.py               # Preprocesamiento adaptativo + OCR dual
-│   ├── modulo3_dataset.py           # Generación de dataset sintético
-│   ├── modulo4_transformer.py       # Arquitectura + entrenamiento del Transformer
-│   ├── modulo5_asistente.py         # Asistente conversacional + Gradio
-│   ├── modulo6_camara.py            # Detección en tiempo real por cámara
-│   └── requirements.txt             # Dependencias del paquete Modern/
+├── Modern/                           # Carpeta de desarrollo local
+│   ├── __init__.py                   # Agrega Modern/ al sys.path automáticamente
+│   ├── main.py                       # Menú interactivo CLI (opciones 1–4)
+│   ├── modulo0_config.py             # Vocabulario, constantes y reglas Pico y Placa
+│   ├── modulo1_deteccion_yolo.py     # Detección de placa con YOLO11 (cascada 4 niveles)
+│   ├── modulo2_ocr.py                # Preprocesamiento adaptativo + OCR dual
+│   ├── modulo2b_corrector_ocr.py     # Corrector avanzado de errores OCR posicionales
+│   ├── modulo3_dataset.py            # Generación de dataset sintético (~48k muestras)
+│   ├── modulo4_transformer.py        # Arquitectura + entrenamiento del Transformer
+│   ├── modulo5_asistente.py          # Asistente conversacional + Gradio integral
+│   ├── modulo6_camara.py             # Detección en tiempo real por cámara web
+│   ├── requirements.txt              # Dependencias completas para uso local
+│   └── resultados_placas.csv         # Historial de detecciones (generado en ejecución)
 │
-├── Modelo_IA_Pico_Placa_V12.ipynb  # Notebook principal (Colab) — fuente de verdad
-│                                    # del despliegue Gradio. Contiene la misma
-│                                    # lógica de los módulos de forma autónoma.
+├── pico-placa-popayan/               # Carpeta de producción (HuggingFace Spaces)
+│   ├── modelos/
+│   │   └── transformer_pico_placa.pt # Checkpoint del Transformer entrenado
+│   ├── app.py                        # Punto de entrada para HuggingFace Spaces
+│   ├── modulo0_config.py             # (mismo que Modern/ — sincronizado)
+│   ├── modulo1_deteccion_yolo.py     # (mismo que Modern/ — sincronizado)
+│   ├── modulo2_ocr.py                # (mismo que Modern/ — sincronizado)
+│   ├── modulo2b_corrector_ocr.py     # (mismo que Modern/ — sincronizado)
+│   ├── modulo3_dataset.py            # (mismo que Modern/ — sincronizado)
+│   ├── modulo4_transformer.py        # (mismo que Modern/ — sincronizado)
+│   ├── modulo5_asistente.py          # (mismo que Modern/ — sincronizado)
+│   ├── modulo6_camara.py             # (mismo que Modern/ — sincronizado)
+│   ├── registros_placas.db           # Base de datos SQLite de consultas
+│   ├── packages.txt                  # Dependencias del sistema (Tesseract, etc.)
+│   ├── requirements.txt              # Dependencias Python para HuggingFace
+│   └── subir_modelo.py               # Utilidad para subir el .pt a HuggingFace Hub
 │
-├── modelos/                         # Checkpoint del Transformer (creado al entrenar)
-│   └── transformer_pico_placa.pt   # Generado por Módulo 4 / notebook
+├── modelos/                          # Checkpoint raíz (creado al entrenar localmente)
+│   └── transformer_pico_placa.pt
 │
-├── app.py                           # Servidor FastAPI (punto de entrada para Render)
-├── render.yaml                      # Configuración de despliegue en Render.com
-├── requirements.txt                 # Dependencias raíz para uso local completo
-├── requirements_api.txt             # Dependencias mínimas para el servidor FastAPI
-├── requirements_colab.txt           # Dependencias para Google Colab / Jupyter
-├── main.py                          # Menú interactivo local (CLI)
-├── resultados_placas.csv            # Historial de detecciones (generado en ejecución)
-└── README.md                        # Este archivo
+├── Modelo_IA_Pico_Placa_V12.ipynb   # Notebook principal (Google Colab)
+├── ngrok.exe                         # Túnel público para exposición local
+├── app.py                            # app.py raíz (referencia, no en producción activa)
+├── requirements.txt                  # Dependencias completas raíz
+├── requirements_api.txt              # Dependencias mínimas para API
+├── requirements_colab.txt            # Dependencias para Google Colab
+├── render.yaml                       # Configuración intentada en Render.com (ver nota)
+├── modal_app.py                      # Alternativa de despliegue explorada (Modal.com)
+└── README.md                         # Este archivo
 ```
 
 ---
@@ -110,7 +131,7 @@ TransformerModeloRedNeuronalia/
 
 ### `modulo0_config.py` — Configuración Global
 
-**Responsabilidad única:** define todas las constantes, vocabularios y reglas compartidas por el resto del sistema. Ningún otro módulo duplica estos valores.
+Fuente de verdad de todas las constantes del sistema. Ningún otro módulo duplica estos valores.
 
 | Elemento | Descripción |
 |---|---|
@@ -124,39 +145,52 @@ TransformerModeloRedNeuronalia/
 
 ### `modulo1_deteccion_yolo.py` — Detección de Placa
 
-Pipeline en cascada de 4 niveles para detectar la placa en cualquier imagen:
+Pipeline en cascada de 4 niveles para detectar la placa en cualquier condición de imagen:
 
-1. YOLO11 conf=0.35 (imagen original)
-2. YOLO11 conf=0.25 (imagen con denoising + CLAHE + sharpening)
-3. YOLO11 conf=0.15 (umbral mínimo)
-4. Fallback por segmentación de color HSV
+1. YOLO11 `conf=0.35` (imagen original)
+2. YOLO11 `conf=0.25` (imagen con denoising + CLAHE + sharpening)
+3. YOLO11 `conf=0.15` (umbral mínimo)
+4. Fallback por segmentación de color HSV (amarillo, blanco, verde, naranja)
 
-Aplica super-resolución ×4 con Lanczos4 al recorte final. El modelo YOLO se descarga automáticamente desde HuggingFace en el primer uso.
+Aplica super-resolución ×4 con interpolación Lanczos4 al recorte final. El modelo YOLO se descarga automáticamente desde HuggingFace en el primer uso mediante singleton.
 
-**Función principal:** `detectar_y_recortar_placa(ruta_imagen)` → `(recorte_rgb, img_marcada, metodo)`
+**Función principal:** `detectar_y_recortar_placa(ruta)` → `(recorte_rgb, img_marcada, metodo)`
 
 ### `modulo2_ocr.py` — OCR de Alta Precisión
 
-Preprocesamiento adaptativo según el color de fondo de la placa (amarillo, blanco, verde, naranja, gris), seguido de OCR dual:
+Preprocesamiento adaptativo según el color de fondo (amarillo, blanco, verde, naranja, gris), seguido de OCR dual:
 
 - **EasyOCR:** 2 pasadas (imagen RGB + binarizada), confianza > 0.3
 - **Tesseract:** PSM 7, 8 y 13 en paralelo
 
-Corrección posicional automática de errores OCR típicos (O↔0, I↔1, S↔5, B↔8, etc.) según la estructura `[A-Z]{3}[0-9]{2,3}`.
+Los candidatos se fusionan y pasan por `modulo2b_corrector_ocr.py` para corrección posicional avanzada (O↔0, I↔1, S↔5, B↔8, etc.) según la estructura `[A-Z]{3}[0-9]{2,3}`.
 
 **Función principal:** `extraer_datos_placa(recorte_rgb)` → `(DataFrame, imagen_binaria)`
 
+### `modulo2b_corrector_ocr.py` — Corrector OCR Avanzado
+
+Módulo especializado en recuperar placas con errores de lectura OCR:
+
+- Corrección posicional por zona (letras pos 0–2, dígitos pos 3–5)
+- Recuperación de placas de 5, 7 u 8 caracteres eliminando o insertando el carácter correcto
+- Scoring de candidatos por similitud al formato oficial colombiano
+- Validación final con regex `PATRON_ANTIGUA` y `PATRON_NUEVA`
+
+**Función principal:** `corregir_placa(texto_raw, tipo_placa)` → `str | None`
+
 ### `modulo3_dataset.py` — Generación de Dataset
 
-Genera el dataset de entrenamiento del Transformer con tres niveles de variabilidad:
+Genera el dataset de entrenamiento del Transformer con tres niveles de variabilidad controlada:
 
-- **Nivel A (75%):** placas antiguas limpias `ABC123`
-- **Nivel B (20%):** placas nuevas `ABC12D`
-- **Nivel C (5%):** placas con confusión OCR simulada
+| Nivel | Proporción | Descripción |
+|---|---|---|
+| A | 75% | Placas antiguas limpias `ABC123` |
+| B | 20% | Placas nuevas `ABC12D` |
+| C | 5% | Placas con confusión OCR simulada (O↔0, I↔1…) |
 
-Puede integrar placas reales procesadas por Módulos 1+2 (pipeline Kaggle) para enriquecer el entrenamiento.
+Puede integrar placas reales del dataset Kaggle `andrewmvd/car-plate-detection` para enriquecer el entrenamiento.
 
-**Función principal:** `preparar_datos_transformer(historico_df, df_reales, n_sintetico)` → `list[(tokens, label)]`
+**Función principal:** `preparar_datos_transformer(historico_df, df_reales, n_sintetico=48000)` → `list[(tokens, label)]`
 
 ### `modulo4_transformer.py` — Transformer desde Cero
 
@@ -164,59 +198,66 @@ Arquitectura completa implementada en PyTorch sin dependencias de HuggingFace:
 
 ```
 tokens(B,7) → Embedding(B,7,64) → PositionalEncoding
-            → 2×TransformerEncoderBlock → MeanPooling
-            → Clasificador FC → 5 clases (días de semana)
+            → 2×TransformerEncoderBlock(d_model=64, heads=4, d_ff=256)
+            → MeanPooling → Dropout → Linear(64) → ReLU → Linear(5)
+            → 5 clases (Lunes / Martes / Miércoles / Jueves / Viernes)
 ```
 
-Hiperparámetros: `d_model=64`, `num_heads=4`, `d_ff=256`, `num_layers=2`, `dropout=0.1`.
-
-Entrenamiento con AdamW + OneCycleLR + early stopping (paciencia=7). **Compatible con Colab:** la resolución de rutas usa `try/except` sobre `__file__` para funcionar tanto como `.py` como importado desde notebook.
+Entrenamiento con AdamW + OneCycleLR + early stopping (`paciencia=7`). El checkpoint se guarda en `modelos/transformer_pico_placa.pt`.
 
 **Funciones principales:**
 - `ejecutar_modulo4(datos_raw)` → modelo entrenado
-- `predecir_pico_placa(placa, model, verbose)` → dict con restricción y confianza
+- `predecir_pico_placa(placa, model, verbose)` → `{restriccion, confianza_pct, probabilidades}`
 - `guardar_modelo(model, ruta)` / `cargar_modelo(ruta)` → checkpoint `.pt`
 
-### `modulo5_asistente.py` — Asistente Conversacional
+### `modulo5_asistente.py` — Asistente Conversacional + Gradio
 
-Asistente en lenguaje natural para consultas de Pico y Placa. Extrae placa, fecha e intención desde texto libre y consulta el Transformer para la predicción. Usa únicamente las fuentes internas del proyecto (no inventa normas externas).
+Asistente en lenguaje natural para consultas de Pico y Placa. Extrae placa, fecha e intención desde texto libre y consulta el Transformer para la predicción. Usa únicamente fuentes internas del proyecto.
 
-Interfaces disponibles:
-- `consultar_asistente_pico_placa(pregunta)` — función base
-- `asistente_conversacional_interactivo()` — widgets Jupyter
-- `asistente_colab_input()` — consola con `input()`
+Capacidades de extracción:
+- Placa desde texto libre con regex (formatos antiguo y nuevo)
+- Fecha: "hoy", "mañana", nombre del día, dd/mm, "12 de mayo"
+- Intención: validar tránsito, consultar día, consulta semanal, temas fuera de alcance
 
-El despliegue Gradio (`desplegar_app_integral_gradio()` y `desplegar_asistente_gradio()`) **vive únicamente en el notebook** y no debe ser movido a este módulo.
+Interfaces:
+- `consultar_asistente_pico_placa(pregunta)` — función base reutilizable
+- `asistente_colab_input()` — consola con `input()` (usada por `main.py`)
+- `desplegar_app_integral_gradio()` — app Gradio completa con YOLO + OCR + Transformer + chat
+
+La app Gradio incluye corrección de espejo para cámara web (JavaScript), soporte de imagen por archivo o webcam, y panel conversacional en la misma interfaz.
 
 ### `modulo6_camara.py` — Detección en Tiempo Real
 
-Captura video de cámara web o DroidCam, detecta placas frame a frame con YOLO, aplica OCR y predice el día de restricción con el Transformer. Dibuja overlay con color por día y confianza del modelo.
-
-**Función principal:** `iniciar_camara(cam_idx, usar_transformer, gpu)`
+Captura video de cámara web, DroidCam o IP Webcam, detecta placas frame a frame con YOLO11, aplica OCR y predice el día de restricción con el Transformer. Dibuja overlay con color por día y confianza.
 
 Modos de cámara:
 - `cam_idx=0` → cámara integrada del portátil
-- `cam_idx=1` → cámara USB externa o DroidCam Client
-- `cam_idx="http://IP:PORT/video"` → DroidCam sin cliente (stream directo)
+- `cam_idx=1` → cámara USB / DroidCam Client
+- `cam_idx="http://IP:PORT/video"` → stream de celular directo
+
+Controles: `q` = salir | `s` = guardar captura
+
+**Función principal:** `iniciar_camara(cam_idx, usar_transformer, gpu)`
 
 ---
 
 ## Flujo de Datos
 
 ```
-Imagen / Video / Texto
+Imagen / Video / Texto libre
         │
         ▼
 ┌───────────────┐
 │  Módulo 1     │  detectar_y_recortar_placa()
-│  YOLO11       │  → recorte_rgb (numpy)
+│  YOLO11       │  → recorte_rgb (numpy, super-res ×4)
 └───────┬───────┘
         │
         ▼
-┌───────────────┐
-│  Módulo 2     │  extraer_datos_placa()
-│  OCR dual     │  → DataFrame {placa, ultimo_digito, tipo_placa...}
-└───────┬───────┘
+┌───────────────────────┐
+│  Módulo 2             │  extraer_datos_placa()
+│  EasyOCR + Tesseract  │  → DataFrame {placa, ultimo_digito, tipo_placa, motor_ocr}
+│  + Corrector 2b       │
+└───────┬───────────────┘
         │
         ├──────────────────────────────────────────────┐
         │                                              │
@@ -235,16 +276,15 @@ Imagen / Video / Texto
                                                      ▼
                                           ┌──────────────────────┐
                                           │ Módulo 5             │
-                                          │ consultar_asistente_ │
-                                          │ pico_placa()         │
+                                          │ Asistente + Gradio   │
                                           └──────────┬───────────┘
                                                      │
                               ┌──────────────────────┤
                               │                      │
-                    ┌─────────▼──────┐     ┌─────────▼──────────┐
-                    │  Gradio (Web)  │     │  FastAPI (/detect)  │
-                    │  [Notebook]    │     │  [Render / cloud]   │
-                    └────────────────┘     └────────────────────┘
+                    ┌─────────▼──────┐     ┌─────────▼──────────────┐
+                    │  Gradio local  │     │  HuggingFace Spaces     │
+                    │  + ngrok       │     │  (producción pública)   │
+                    └────────────────┘     └────────────────────────┘
 ```
 
 ---
@@ -255,15 +295,15 @@ El proyecto soporta tres entornos completamente independientes que comparten la 
 
 | Entorno | Punto de entrada | Requirements | Despliegue |
 |---|---|---|---|
-| **Google Colab** | `Modelo_IA_Pico_Placa_V12.ipynb` | `requirements_colab.txt` | Gradio con `share=True` |
-| **Local (CLI)** | `main.py` | `requirements.txt` | Menú interactivo |
-| **API Cloud** | `app.py` | `requirements_api.txt` | Render.com / uvicorn |
+| **Google Colab** | `Modelo_IA_Pico_Placa_V12.ipynb` | `requirements_colab.txt` | Gradio con `share=True` (link temporal 72h) |
+| **Local (CLI)** | `Modern/main.py` | `requirements.txt` | Menú interactivo + Gradio + ngrok |
+| **Producción** | `pico-placa-popayan/app.py` | `pico-placa-popayan/requirements.txt` | HuggingFace Spaces (permanente) |
 
 ### ¿Por qué tres entornos distintos?
 
-- **Colab:** requiere `pillow-avif-plugin`, `gradio`, y monta Google Drive. No tiene `__file__` en las celdas. Los modelos se guardan en `/content/`.
-- **Local:** puede usar la cámara web (Módulo 6), `tkinter` para seleccionar archivos, y tiene acceso al sistema de archivos completo. Los modelos van en `modelos/`.
-- **API:** usa `opencv-python-headless` (sin GUI), carga los modelos de forma lazy, y descarga el checkpoint desde HuggingFace si no existe en disco.
+- **Colab:** no tiene `__file__` en celdas, los modelos van en `/content/`, usa Gradio con `share=True` para enlace temporal.
+- **Local:** acceso a cámara web (Módulo 6), `tkinter` para seleccionar archivos, Gradio local con ngrok para link público. El menú principal (`main.py`) ofrece las 4 opciones del pipeline.
+- **HuggingFace Spaces:** `app.py` lanza directamente `desplegar_app_integral_gradio(share=False)` porque Spaces ya provee el link público permanente. El modelo se descarga desde `Huntercito/modelos-placas-popayan` vía `hf_hub_download`.
 
 ---
 
@@ -273,7 +313,7 @@ El proyecto soporta tres entornos completamente independientes que comparten la 
 
 ```bash
 # 1. Clonar el repositorio
-git clone <url-del-repo>
+git clone https://github.com/TU_USUARIO/TransformerModeloRedNeuronalia.git
 cd TransformerModeloRedNeuronalia
 
 # 2. Crear entorno virtual
@@ -281,7 +321,7 @@ python -m venv venv_placas
 source venv_placas/bin/activate        # Linux/Mac
 venv_placas\Scripts\activate           # Windows
 
-# 3. Instalar PyTorch (elige según tu hardware)
+# 3. Instalar PyTorch
 # GPU NVIDIA:
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 # Solo CPU:
@@ -295,41 +335,51 @@ pip install torch torchvision
 pip install -r requirements.txt
 
 # 6. Ejecutar
+cd Modern
 python main.py
 ```
 
 ### Uso en Google Colab
 
-El notebook `Modelo_IA_Pico_Placa_V12.ipynb` es autónomo. Las dependencias se instalan en las primeras celdas. Solo necesitas:
+El notebook `Modelo_IA_Pico_Placa_V12.ipynb` es autónomo. Solo necesitas:
 
 1. Abrir el notebook en Google Colab
 2. Ejecutar las celdas en orden
-3. En la celda del Módulo 5, se lanza automáticamente la app Gradio con enlace público
+3. El Módulo 5 lanza automáticamente la app Gradio con enlace público temporal
 
-Para usar los módulos `.py` del repositorio dentro del notebook (opcional):
+Para usar los módulos `.py` del repositorio dentro del notebook:
 
 ```python
-# Clonar el repo y agregar Modern/ al path
-!git clone <url-del-repo> /content/repo
+!git clone https://github.com/TU_USUARIO/TransformerModeloRedNeuronalia.git /content/repo
 import sys
 sys.path.insert(0, '/content/repo/Modern')
 
-# Ahora se pueden importar los módulos
 from modulo4_transformer import cargar_modelo, predecir_pico_placa
 ```
 
-### Variables de Entorno (API)
+### ngrok (Despliegue Local Público)
 
-| Variable | Descripción | Requerida |
-|---|---|---|
-| `HF_TOKEN` | Token de HuggingFace para descargar el modelo privado | Sí (Render) |
-| `RUTA_MODELO_TRANSFORMER` | Ruta personalizada al archivo `.pt` | No (usa default) |
+Para exponer la app local en internet coloca `ngrok.exe` en la carpeta `Modern/` y al elegir la opción `[4]` del menú se lanza automáticamente:
+
+```
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  LINKS DE ACCESO:                                                ║
+  ║  Local:       http://127.0.0.1:7860                              ║
+  ║  Público:     https://xxxx-xxxx.ngrok-free.dev                   ║
+  ║  HuggingFace: https://huntercito-pico-placa-popayan.hf.space     ║
+  ╚══════════════════════════════════════════════════════════════════╝
+```
+
+Requiere cuenta gratuita en [ngrok.com](https://ngrok.com) y configurar el authtoken:
+```bash
+ngrok config add-authtoken TU_TOKEN
+```
 
 ---
 
 ## Ejecución
 
-### Menú Local (`main.py`)
+### Menú Local (`Modern/main.py`)
 
 ```
 ============================================================
@@ -338,12 +388,17 @@ from modulo4_transformer import cargar_modelo, predecir_pico_placa
   [1] Pipeline de imágenes (seleccionar archivos)
   [2] Asistente conversacional (Módulo 5)
   [3] Cámara en tiempo real (Módulo 6)
+  [4] Interfaz Web de Producción (Dashboard de Despliegue)
   [0] Salir
+============================================================
 ```
 
-### Módulos Independientes
+- **Opción 1:** abre diálogo para seleccionar imágenes, procesa con YOLO + OCR + Transformer y muestra resultado con matplotlib.
+- **Opción 2:** inicia el asistente conversacional en consola. Soporta preguntas como *"¿Puedo transitar el miércoles con la placa ABC125?"*.
+- **Opción 3:** abre la cámara (integrada o celular) con detección en tiempo real.
+- **Opción 4:** lanza la app Gradio en `http://127.0.0.1:7860` y ngrok en segundo plano.
 
-Cada módulo puede ejecutarse de forma standalone para pruebas:
+### Módulos Independientes
 
 ```bash
 # Probar detección YOLO con una imagen
@@ -355,7 +410,7 @@ python Modern/modulo2_ocr.py recorte_placa.png
 # Generar dataset de prueba
 python Modern/modulo3_dataset.py
 
-# Entrenar Transformer desde cero (mini-dataset de prueba)
+# Entrenar Transformer desde cero
 python Modern/modulo4_transformer.py
 
 # Iniciar asistente conversacional
@@ -370,43 +425,56 @@ python Modern/modulo6_camara.py --cam http://192.168.1.X:8080/video
 
 ## Despliegue
 
-### FastAPI en Render.com
+### HuggingFace Spaces (Producción actual) ✅
 
-El servidor se define en `app.py` y se configura en `render.yaml`.
+**URL pública permanente:** [https://huntercito-pico-placa-popayan.hf.space](https://huntercito-pico-placa-popayan.hf.space)
 
-**Endpoints disponibles:**
+La carpeta `pico-placa-popayan/` es el repositorio sincronizado con HuggingFace Spaces. El `app.py` lanza directamente `desplegar_app_integral_gradio(share=False)` porque Spaces ya expone el puerto públicamente.
 
-| Método | Endpoint | Descripción |
-|---|---|---|
-| `GET` | `/health` | Estado del servidor (no carga modelos) |
-| `POST` | `/detect` | Recibe imagen JPG/PNG → retorna placa y restricción |
-| `POST` | `/detect/texto` | Recibe texto de placa → retorna predicción |
+El modelo Transformer se descarga automáticamente desde:
+```
+Huntercito/modelos-placas-popayan → transformer_pico_placa.pt
+```
 
-**Flujo del primer request (`/detect`):**
-1. Lazy loading: descarga `transformer_pico_placa.pt` desde HuggingFace si no existe
-2. Carga YOLO11, EasyOCR y Transformer en memoria
-3. Procesa la imagen con el pipeline completo
-4. Retorna JSON con placa, restricción, confianza y probabilidades por día
+### Gradio + ngrok (Despliegue local)
 
-**Configuración Render (`render.yaml`):**
+Al elegir la opción `[4]` en `main.py` se inicia simultáneamente:
+1. Gradio en `http://127.0.0.1:7860`
+2. ngrok en segundo plano creando el túnel público
+
+El recuadro con los tres links aparece automáticamente en consola cuando ngrok obtiene su URL.
+
+### Render.com (Intentado — cuenta gratuita insuficiente)
+
+Se configuró `render.yaml` y `app.py` para desplegar como servicio web en Render.com, pero la cuenta gratuita (512 MB de RAM) resultó insuficiente para cargar simultáneamente YOLO11, EasyOCR y el Transformer en producción. Por esta razón se migró a HuggingFace Spaces, que ofrece mayor RAM disponible para inferencia.
+
 ```yaml
+# render.yaml (referencia histórica — no en uso activo)
 buildCommand: pip install -r requirements_api.txt
 startCommand: uvicorn app:app --host 0.0.0.0 --port 10000
 healthCheckPath: /health
 ```
 
-Configurar en el dashboard de Render la variable de entorno `HF_TOKEN` con tu token de HuggingFace.
+---
 
-### App Gradio en Google Colab
+## Refactorización de Código
 
-El despliegue Gradio es autónomo dentro del notebook. Al ejecutar la última celda del Módulo 5:
+Durante el desarrollo se realizó una refactorización completa de todos los módulos para mejorar la mantenibilidad sin alterar la funcionalidad:
 
-```python
-# Se lanza automáticamente si AUTO_DESPLEGAR_APP_INTEGRAL = True
-app_integral_gradio = desplegar_app_integral_gradio(share=True)
-```
+| Módulo | Líneas originales | Líneas refactorizadas | Reducción |
+|---|---|---|---|
+| `modulo0_config.py` | 128 | 75 | −41% |
+| `modulo1_deteccion_yolo.py` | 246 | 124 | −50% |
+| `modulo2b_corrector_ocr.py` | 424 | 122 | −71% |
+| `modulo2_ocr.py` | 443 | 174 | −61% |
+| `modulo3_dataset.py` | 348 | 127 | −63% |
+| `modulo4_transformer.py` | 690 | 277 | −60% |
+| `modulo5_asistente.py` | 1 008 | 372 | −63% |
+| `modulo6_camara.py` | 457 | 177 | −61% |
+| `main.py` | 333 | 181 | −46% |
+| **TOTAL** | **4 077** | **1 629** | **−60%** |
 
-Gradio genera un enlace público temporal (válido 72 horas). El `share=True` crea un túnel desde los servidores de Gradio hasta la sesión de Colab.
+Técnicas aplicadas: funciones helper privadas `_nombre()`, generación de diccionarios por comprensión, singletons de una línea, eliminación de constantes no usadas (`PROMPT_SISTEMA_ASISTENTE`), consolidación de interfaces redundantes (`desplegar_asistente_gradio` integrado en `desplegar_app_integral_gradio`), y eliminación del parámetro `mostrar_visual` al remover la visualización HTML de Colab/Jupyter no usada en producción.
 
 ---
 
@@ -417,28 +485,29 @@ Gradio genera un enlace público temporal (válido 72 horas). El `share=True` cr
 El notebook `Modelo_IA_Pico_Placa_V12.ipynb` y los módulos `.py` son **implementaciones paralelas** de la misma lógica, diseñadas para convivir sin interferir:
 
 ```
-Notebook (Colab)              Módulos .py (local/API)
-─────────────────             ───────────────────────
+Notebook (Colab)              Módulos .py (local / HuggingFace)
+─────────────────             ──────────────────────────────────
 Funciones inline              Funciones importables
 Estado global en celdas       Singletons controlados
-Gradio integrado              Exporta API limpia
+Gradio con share=True         Gradio con share=False
 torch.save() en /content/     torch.save() en modelos/
 __file__ no disponible        __file__ con try/except
 lector_easy global            obtener_lector_easyocr()
 model_transformer global      cargar_modelo(ruta)
 ```
 
-### Regla de oro de actualización
+### Regla de oro
 
-> **El despliegue Gradio del notebook es la fuente de verdad.** Cualquier actualización a los módulos `.py` debe ser compatible hacia atrás con las funciones que el notebook ya consume. Nunca cambiar las firmas de `predecir_pico_placa()`, `consultar_asistente_pico_placa()`, o `asignar_restriccion()` sin verificar primero el notebook.
+> **Las firmas públicas de los módulos son inmutables.** Nunca cambiar las firmas de `predecir_pico_placa()`, `consultar_asistente_pico_placa()`, `extraer_datos_placa()` o `asignar_restriccion()` sin verificar compatibilidad con el notebook y con `app.py`.
 
-### Sincronización manual (cuando el notebook necesita funcionalidades nuevas)
+### Sincronización Modern/ → pico-placa-popayan/
 
-Si agregas lógica nueva a un módulo que quieres que el notebook también tenga, el proceso correcto es:
+Los módulos de ambas carpetas deben mantenerse idénticos. El flujo correcto de actualización es:
 
-1. Implementar en el módulo `.py` con tests
-2. Copiar la función al notebook dentro de la celda correspondiente
-3. Verificar que el despliegue Gradio sigue funcionando sin cambios
+1. Desarrollar y probar en `Modern/`
+2. Copiar los módulos actualizados a `pico-placa-popayan/`
+3. Hacer `git push` al repositorio GitHub
+4. Hacer `git push` al Space de HuggingFace (rama `main`)
 
 ---
 
@@ -452,7 +521,7 @@ Si agregas lógica nueva a un módulo que quieres que el notebook también tenga
 | 6, 7 | Jueves |
 | 8, 9 | Viernes |
 
-Aplica de lunes a viernes en horario de restricción. El sistema **no inventa** horarios, excepciones, permisos, ni normas para motos, taxis o vehículos de carga — solo reporta lo que está codificado en las fuentes internas del proyecto.
+Aplica de lunes a viernes en horario de restricción. El sistema **no inventa** horarios, excepciones, permisos, ni normas para motos, taxis o vehículos de carga — solo reporta lo codificado en las fuentes internas del proyecto.
 
 ---
 
@@ -464,7 +533,9 @@ Aplica de lunes a viernes en horario de restricción. El sistema **no inventa** 
 | Validación | ~98.8% |
 | **Test (final)** | **98.22%** |
 
-Entrenado con ~48.000 placas sintéticas con variabilidad controlada (formatos antiguo/nuevo + confusiones OCR simuladas) más placas reales opcionales del dataset Kaggle `andrewmvd/car-plate-detection`.
+Entrenado con ~48 000 placas sintéticas con variabilidad controlada (formatos antiguo/nuevo + confusiones OCR simuladas) más placas reales opcionales del dataset Kaggle `andrewmvd/car-plate-detection`.
+
+Hiperparámetros finales: `d_model=64`, `num_heads=4`, `d_ff=256`, `num_layers=2`, `dropout=0.1`, `epochs=30`, `batch_size=256`, optimizador AdamW + OneCycleLR.
 
 ---
 
